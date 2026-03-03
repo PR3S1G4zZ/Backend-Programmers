@@ -71,7 +71,7 @@ class AuthController extends Controller
                     'name' => strip_tags(trim($validated['name'])),
                     'lastname' => isset($validated['lastname']) ? strip_tags(trim($validated['lastname'])) : null,
                     'email' => strtolower(trim($validated['email'])),
-                    'password' => Hash::make($validated['password']),
+                    'password' => $validated['password'], // Pass plain password, let the model handle hashing
                     'user_type' => $validated['user_type'],
                     'role' => $validated['user_type'],
                 ]);

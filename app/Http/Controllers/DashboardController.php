@@ -15,7 +15,9 @@ class DashboardController extends Controller
         $active = Project::where('company_id',$uid)->whereIn('status',['open','in_progress'])->count();
         $hired = Application::whereHas('project', fn($q)=>$q->where('company_id',$uid))
                   ->where('status','accepted')->count();
-        $budget = Project::where('company_id',$uid)->sum(DB::raw('COALESCE(budget_max, budget_min)'));
+        $budget = Project::where('company_id', $uid)->get()->sum(function($project) {
+            return $project->budget_max ?? $project->budget_min ?? 0;
+        });
         $total = Project::where('company_id',$uid)->whereNotIn('status',['draft'])->count();
         $completed = Project::where('company_id',$uid)->where('status','completed')->count();
         $completion = $total > 0 ? round(($completed / $total) * 100) : 0;
@@ -90,14 +92,12 @@ class DashboardController extends Controller
         // - Auth user is a participant (initiator or participant)
         // - Message sender is NOT auth user
         // - Message is not read
-        $unreadMessages = DB::table('messages')
-            ->join('conversations', 'messages.conversation_id', '=', 'conversations.id')
-            ->where(function($query) use ($uid) {
-                $query->where('conversations.initiator_id', $uid)
-                      ->orWhere('conversations.participant_id', $uid);
+        $unreadMessages = Message::whereHas('conversation', function($q) use ($uid) {
+                $q->where('initiator_id', $uid)
+                  ->orWhere('participant_id', $uid);
             })
-            ->where('messages.sender_id', '!=', $uid)
-            ->where('messages.is_read', false)
+            ->where('sender_id', '!=', $uid)
+            ->where('is_read', false)
             ->count();
 
         // 5. Recent Activity (Mocked for now mostly, or fetch real events)

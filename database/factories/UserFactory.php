@@ -60,10 +60,17 @@ class UserFactory extends Factory
 
     public function company(): static
     {
+        $companyNames = [
+            'Tech Solutions SAS', 'Innovate Corp', 'Digital Services SL', 
+            'Cloud Systems Ltd', 'Software Factory', 'Data Analytics Inc',
+            'Web Development Co', 'Mobile Apps Studio', 'IT Consulting Group'
+        ];
+        
         return $this->state(fn (array $attributes) => [
             'user_type' => 'company',
             'role' => 'company',
             'lastname' => null,
+            'name' => $companyNames[array_rand($companyNames)],
         ]);
     }
 

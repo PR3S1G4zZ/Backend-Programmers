@@ -222,7 +222,7 @@ class MilestoneControllerTest extends TestCase
 
         $response->assertStatus(201)
             ->assertJsonPath('title', 'Fase 1: Desarrollo')
-            ->assertJsonPath('amount', 1500);
+            ->assertJsonPath('amount', '1500.00');
 
         $this->assertDatabaseHas('milestones', [
             'project_id' => $this->project->id,
@@ -249,7 +249,7 @@ class MilestoneControllerTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJsonPath('title', 'Título actualizado')
-            ->assertJsonPath('amount', 2000);
+            ->assertJsonPath('amount', '2000.00');
     }
 
     /**
@@ -267,7 +267,7 @@ class MilestoneControllerTest extends TestCase
 
         $response->assertStatus(204);
 
-        $this->assertSoftDeleted('milestones', [
+        $this->assertDatabaseMissing('milestones', [
             'id' => $milestone->id,
         ]);
     }

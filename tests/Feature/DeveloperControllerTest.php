@@ -159,6 +159,13 @@ class DeveloperControllerTest extends TestCase
      */
     public function testIndexFiltersBySearch(): void
     {
+        // Clear existing data to ensure test isolation
+        User::truncate();
+        DeveloperProfile::truncate();
+        Project::truncate();
+        Application::truncate();
+        Review::truncate();
+
         // Create a company user to act as authenticated user
         $company = User::factory()->company()->create();
 

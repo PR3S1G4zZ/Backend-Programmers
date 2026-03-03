@@ -98,7 +98,7 @@ class ProjectController extends Controller
                  $query->where('developer_id', $r->user()->id)->where('status', 'accepted');
              });
         }
-        return \App\Http\Resources\ProjectResource::collection($q->latest()->get());
+        return \App\Http\Resources\ProjectResource::collection($q->latest()->paginate());
     }
 
     public function show(Project $project)
@@ -197,7 +197,7 @@ class ProjectController extends Controller
     {
         abort_unless($request->user()->user_type === 'company', 403);
 
-        $projects = Project::with(['categories', 'skills', 'applications.developer'])
+        $projects = Project::with(['company', 'categories', 'skills', 'applications.developer'])
             ->withCount(['applications', 'milestones', 'milestones as completed_milestones_count' => function ($query) {
                 $query->where('progress_status', 'completed');
             }])

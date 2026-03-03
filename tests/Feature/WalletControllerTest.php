@@ -49,21 +49,19 @@ class WalletControllerTest extends TestCase
                     'held_balance',
                 ],
                 'transactions' => [
-                    'data' => [
-                        '*' => [
-                            'id',
-                            'wallet_id',
-                            'amount',
-                            'type',
-                            'description',
-                        ]
+                    '*' => [
+                        'id',
+                        'wallet_id',
+                        'amount',
+                        'type',
+                        'description',
                     ]
                 ]
             ]);
 
         // Verificar que el balance es correcto
         $this->assertEquals(500.00, $response->json('wallet.balance'));
-        $this->assertCount(3, $response->json('transactions.data'));
+        $this->assertCount(3, $response->json('transactions'));
     }
 
     /**
@@ -125,8 +123,10 @@ class WalletControllerTest extends TestCase
         PaymentMethod::factory()->create([
             'user_id' => $user->id,
             'type' => 'bank_account',
-            'provider' => 'Visa',
-            'account_last_four' => '1234',
+            'details' => json_encode([
+                'provider' => 'Visa',
+                'account_last_four' => '1234'
+            ]),
         ]);
 
         // Autenticar y hacer el retiro
@@ -172,8 +172,10 @@ class WalletControllerTest extends TestCase
         PaymentMethod::factory()->create([
             'user_id' => $user->id,
             'type' => 'bank_account',
-            'provider' => 'Visa',
-            'account_last_four' => '1234',
+            'details' => json_encode([
+                'provider' => 'Visa',
+                'account_last_four' => '1234'
+            ]),
         ]);
 
         // Autenticar e intentar retirar más de lo disponible

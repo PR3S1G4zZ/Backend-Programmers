@@ -19,8 +19,7 @@ class FavoriteController extends Controller
         // Return list of favorite developer IDs or full objects
         // Assuming we have a relation 'favorites' in User model, or we just query table directly
         // Let's query table directly for simplicity or define relation later
-        $favorites = DB::table('favorites')
-            ->where('company_id', $user->id)
+        $favorites = Favorite::where('company_id', $user->id)
             ->pluck('developer_id');
 
         return response()->json($favorites);
@@ -39,23 +38,19 @@ class FavoriteController extends Controller
         // $dev = User::find($developerId);
         // if ($dev->user_type !== 'developer') ...
 
-        $exists = DB::table('favorites')
-            ->where('company_id', $companyId)
+        $exists = Favorite::where('company_id', $companyId)
             ->where('developer_id', $developerId)
             ->exists();
 
         if ($exists) {
-            DB::table('favorites')
-                ->where('company_id', $companyId)
+            Favorite::where('company_id', $companyId)
                 ->where('developer_id', $developerId)
                 ->delete();
             return response()->json(['status' => 'removed', 'message' => 'Eliminado de favoritos']);
         } else {
-            DB::table('favorites')->insert([
+            Favorite::create([
                 'company_id' => $companyId,
-                'developer_id' => $developerId,
-                'created_at' => now(),
-                'updated_at' => now()
+                'developer_id' => $developerId
             ]);
             return response()->json(['status' => 'added', 'message' => 'Añadido a favoritos']);
         }

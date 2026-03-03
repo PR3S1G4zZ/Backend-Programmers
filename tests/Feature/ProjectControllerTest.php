@@ -201,7 +201,7 @@ class ProjectControllerTest extends TestCase
         $this->assertCount(2, $projects);
 
         foreach ($projects as $p) {
-            $this->assertEquals($company1->id, $p['company_id']);
+            $this->assertEquals($company1->id, $p['company']['id']);
         }
     }
 

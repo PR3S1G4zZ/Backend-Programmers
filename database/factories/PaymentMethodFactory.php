@@ -18,8 +18,10 @@ class PaymentMethodFactory extends Factory
         return [
             'user_id' => User::factory(),
             'type' => 'bank_account',
-            'provider' => fake()->randomElement(['Visa', 'Mastercard', 'PayPal', 'Stripe']),
-            'account_last_four' => fake()->numerify('####'),
+            'details' => json_encode([
+                'provider' => fake()->randomElement(['Visa', 'Mastercard', 'PayPal', 'Stripe']),
+                'account_last_four' => fake()->numerify('####')
+            ]),
             'is_default' => false,
         ];
     }
