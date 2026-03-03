@@ -1434,14 +1434,14 @@ class AdminController extends Controller
         
         try {
             // Usar una sola consulta con groupBy para obtener todas las estadísticas
-            $stats = \App\Models\PlatformCommission::selectRaw('
-                COUNT(*) as total_projects,
-                SUM(CASE WHEN status = "released" THEN commission_amount ELSE 0 END) as total_commission,
-                SUM(CASE WHEN status = "pending" THEN held_amount ELSE 0 END) as total_held,
-                SUM(CASE WHEN status = "pending" THEN 1 ELSE 0 END) as pending_count,
-                SUM(CASE WHEN status = "released" THEN 1 ELSE 0 END) as released_count,
-                AVG(CASE WHEN status = "released" THEN commission_amount ELSE NULL END) as avg_commission
-            ')->first();
+            $stats = \App\Models\PlatformCommission::selectRaw("
+               COUNT(*) as total_projects,
+               SUM(CASE WHEN status = 'released' THEN commission_amount ELSE 0 END) as total_commission,
+               SUM(CASE WHEN status = 'pending' THEN held_amount ELSE 0 END) as total_held,
+               SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_count,
+               SUM(CASE WHEN status = 'released' THEN 1 ELSE 0 END) as released_count,
+               AVG(CASE WHEN status = 'released' THEN commission_amount ELSE NULL END) as avg_commission
+            ")->first();
 
             return response()->json([
                 'success' => true,
