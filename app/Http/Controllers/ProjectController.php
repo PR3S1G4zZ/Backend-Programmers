@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Project;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\Favorite;
+use App\Models\DeveloperProgress;
 
 class ProjectController extends Controller
 {
