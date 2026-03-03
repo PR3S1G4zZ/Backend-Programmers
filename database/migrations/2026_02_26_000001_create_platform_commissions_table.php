@@ -15,8 +15,8 @@ return new class extends Migration
         Schema::create('platform_commissions', function (Blueprint $table) {
             $table->id();
             $table->foreignId('project_id')->constrained()->onDelete('cascade');
-            $table->foreignId('company_id')->constrained()->onDelete('cascade');
-            $table->foreignId('developer_id')->nullable()->constrained()->onDelete('set null');
+            $table->foreignId('company_id')->constrained('users')->onDelete('cascade');
+            $table->foreignId('developer_id')->nullable()->constrained('users')->onDelete('set null');
             $table->decimal('total_amount', 12, 2); // Monto total del proyecto
             $table->decimal('held_amount', 12, 2); // Monto retenido (50%)
             $table->decimal('commission_rate', 5, 2); // Tasa de comisión (15% o 20%)
