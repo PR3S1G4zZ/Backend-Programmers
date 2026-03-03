@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('conversations', function (Blueprint $table) {
             $table->id();
-            $table->enum('type', ['direct', 'project'])->default('direct');
+            $table->string('type')->default('direct');
             $table->foreignId('project_id')->nullable()->constrained('projects')->nullOnDelete();
             // Initiator usually the company in this context, but could be anyone
             $table->foreignId('initiator_id')->constrained('users')->cascadeOnDelete();

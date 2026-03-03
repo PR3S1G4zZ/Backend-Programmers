@@ -16,7 +16,7 @@ return new class extends Migration
             $table->foreignId('project_id')->constrained()->onDelete('cascade');
             $table->string('title');
             $table->decimal('amount', 10, 2);
-            $table->enum('status', ['pending', 'funded', 'released', 'blocked'])->default('pending');
+            $table->string('status')->default('pending');
             $table->integer('order')->default(1);
             $table->timestamps();
         });

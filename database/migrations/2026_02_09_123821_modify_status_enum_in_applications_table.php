@@ -15,7 +15,9 @@ return new class extends Migration
         // Using raw statement because changing enum via Schema builder can be tricky across drivers
         // and often requires doctrine/dbal which might not be installed or configured.
         // Assuming MySQL/MariaDB
-        DB::statement("ALTER TABLE applications MODIFY COLUMN status ENUM('pending', 'sent', 'reviewed', 'accepted', 'rejected') NOT NULL DEFAULT 'pending'");
+        Schema::table('applications', function (Blueprint $table) {
+            $table->string('status')->default('pending')->change();
+        });
     }
 
     /**
@@ -26,6 +28,8 @@ return new class extends Migration
         // Revert to previous state (default 'sent', no 'pending')
         // Warning: This will fail if there are 'pending' records. 
         // ideally we should update them first, but for now we just revert definition.
-        DB::statement("ALTER TABLE applications MODIFY COLUMN status ENUM('sent', 'reviewed', 'accepted', 'rejected') NOT NULL DEFAULT 'sent'");
+        Schema::table('applications', function (Blueprint $table) {
+            $table->string('status')->default('sent')->change();
+        });
     }
 };

@@ -13,7 +13,9 @@ return new class extends Migration
     public function up(): void
     {
         // Use raw SQL to modify the enum column as it's the most reliable way without extra dependencies
-        DB::statement("ALTER TABLE projects MODIFY COLUMN status ENUM('draft', 'open', 'in_progress', 'completed', 'cancelled', 'pending_payment') DEFAULT 'open'");
+        Schema::table('projects', function (Blueprint $table) {
+            $table->string('status')->default('open')->change();
+        });
     }
 
     /**
@@ -22,6 +24,8 @@ return new class extends Migration
     public function down(): void
     {
         // Revert to original enum
-        DB::statement("ALTER TABLE projects MODIFY COLUMN status ENUM('draft', 'open', 'in_progress', 'completed', 'cancelled') DEFAULT 'open'");
+        Schema::table('projects', function (Blueprint $table) {
+            $table->string('status')->default('open')->change();
+        });
     }
 };

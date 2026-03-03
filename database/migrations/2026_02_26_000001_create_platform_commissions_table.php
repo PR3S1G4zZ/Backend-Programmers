@@ -22,7 +22,7 @@ return new class extends Migration
             $table->decimal('commission_rate', 5, 2); // Tasa de comisión (15% o 20%)
             $table->decimal('commission_amount', 12, 2); // Monto de comisión cobrada
             $table->decimal('net_amount', 12, 2); // Monto neto para el developer
-            $table->enum('status', ['pending', 'released', 'cancelled'])->default('pending');
+            $table->string('status')->default('pending');
             $table->timestamps();
         });
     }

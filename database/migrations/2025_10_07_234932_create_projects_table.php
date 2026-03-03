@@ -18,7 +18,7 @@ return new class extends Migration
             $t->text('description');
             $t->unsignedInteger('budget_min')->nullable();
             $t->unsignedInteger('budget_max')->nullable();
-            $t->enum('status', ['draft','open','in_progress','completed','cancelled'])->default('open');
+            $t->string('status')->default('open');
             $t->timestamps();
             
         });

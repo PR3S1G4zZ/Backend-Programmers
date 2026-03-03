@@ -16,7 +16,7 @@ return new class extends Migration
             $t->foreignId('project_id')->constrained()->cascadeOnDelete();
             $t->foreignId('developer_id')->constrained('users')->cascadeOnDelete();
             $t->text('cover_letter')->nullable();
-            $t->enum('status', ['sent','reviewed','accepted','rejected'])->default('sent');
+            $t->string('status')->default('sent');
             $t->timestamps();
             $t->unique(['project_id','developer_id']);
         });

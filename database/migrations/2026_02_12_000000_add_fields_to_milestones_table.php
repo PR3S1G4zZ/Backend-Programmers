@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::table('milestones', function (Blueprint $table) {
             $table->text('description')->nullable()->after('title');
-            $table->enum('progress_status', ['todo', 'in_progress', 'review', 'completed'])->default('todo')->after('status');
+            $table->string('progress_status')->default('todo')->after('status');
             $table->date('due_date')->nullable()->after('order');
         });
     }
