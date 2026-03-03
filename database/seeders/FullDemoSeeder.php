@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Hash;
 use Carbon\Carbon;
 use App\Models\User;
@@ -116,7 +117,7 @@ class FullDemoSeeder extends Seeder
     private function truncateTables(): void
     {
         $this->command->info('🧹 Limpiando base de datos...');
-        DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        Schema::disableForeignKeyConstraints();
         
         DB::table('favorites')->truncate();
         DB::table('activity_logs')->truncate();
@@ -142,7 +143,7 @@ class FullDemoSeeder extends Seeder
         DB::table('skills')->truncate();
         DB::table('project_categories')->truncate();
         
-        DB::statement('SET FOREIGN_KEY_CHECKS=1');
+        Schema::enableForeignKeyConstraints();
     }
 
     private function createSkills(): array

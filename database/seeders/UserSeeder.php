@@ -15,6 +15,7 @@ use App\Models\User;
 use Faker\Factory as Faker;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 
@@ -27,7 +28,7 @@ class UserSeeder extends Seeder
     {
         $this->command->info('🧹 Limpiando datos de demo...');
 
-        DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        Schema::disableForeignKeyConstraints();
         Review::truncate();
         Message::truncate();
         Conversation::truncate();
@@ -42,7 +43,7 @@ class UserSeeder extends Seeder
         ProjectCategory::truncate();
         Skill::truncate();
         User::truncate();
-        DB::statement('SET FOREIGN_KEY_CHECKS=1');
+        Schema::enableForeignKeyConstraints();
 
         $faker = Faker::create('es_ES');
         $password = 'Demo1234!';
