@@ -37,6 +37,11 @@ class PaymentService
              $wallet->increment('held_balance', $amount);
 
              $this->createTransaction($wallet, -$amount, 'escrow_deposit', "Depósito en Garantía Proyecto #{$project->id}", $project);
+
+             // Actualizar estado del proyecto dentro de la transacción
+             if ($project->status === 'pending_payment') {
+                 $project->update(['status' => 'open']);
+             }
          });
     }
 

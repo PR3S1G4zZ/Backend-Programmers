@@ -30,11 +30,6 @@ class ProjectController extends Controller
             if (!$existingCommission) {
                 $paymentService->createCommissionRecord($r->user(), $project, $totalBudget);
             }
-            
-            // Activate Project? Maybe change status from 'pending_payment' to 'open'
-            if ($project->status === 'pending_payment') {
-                $project->update(['status' => 'open']);
-            }
 
             return response()->json(['message' => 'Proyecto financiado con éxito.', 'project' => $project]);
         } catch (\Exception $e) {
