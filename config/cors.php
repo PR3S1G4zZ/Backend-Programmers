@@ -26,7 +26,9 @@ return [
         'http://127.0.0.1:3000',
         env('FRONTEND_URL', '*'), // <--- Esto leerá la variable de Railway o permitirá todo si no existe
     ],
-    'allowed_origins_patterns' => [],
+   'allowed_origins' => ['*'],
+
+    'allowed_methods' => ['*'],
 
     'allowed_headers' => ['*'],
 
@@ -34,6 +36,7 @@ return [
 
     'max_age' => 0,
 
+    // CAMBIA ESTO A FALSE TEMPORALMENTE
     'supports_credentials' => false,
 
 ];
