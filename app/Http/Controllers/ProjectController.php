@@ -152,15 +152,32 @@ class ProjectController extends Controller
     }
 
     /**
-     * Obtener el progreso de los desarrolladores en un proyecto
+     * Obtener el progreso general de los desarrolladores en un proyecto
      */
     public function getDeveloperProgress(Request $request, Project $project)
     {
         abort_unless($request->user()->user_type === 'company' && $project->company_id === $request->user()->id, 403);
 
-        $progress = $project->developerProgress()
+        $progress = $project->applications()
+            ->where('status', 'accepted')
             ->with('developer:id,name,lastname,email,profile_picture')
-            ->get();
+            ->get()
+            ->map(function ($app) use ($project) {
+                $completed = \App\Models\DeveloperMilestone::whereIn('milestone_id', $project->milestones->pluck('id'))
+                    ->where('developer_id', $app->developer_id)
+                    ->where('progress_status', 'completed')
+                    ->count();
+                $total = $project->milestones()->count();
+                $progressPercentage = $total > 0 ? round(($completed / $total) * 100) : 0;
+                
+                return [
+                    'developer_id' => $app->developer_id,
+                    'developer' => $app->developer,
+                    'progress' => $progressPercentage,
+                    'milestones_completed' => $completed,
+                    'total_milestones' => $total
+                ];
+            });
 
         return response()->json(['data' => $progress]);
     }
@@ -195,12 +212,28 @@ class ProjectController extends Controller
         abort_unless($request->user()->user_type === 'company', 403);
 
         $projects = Project::with(['company', 'categories', 'skills', 'applications.developer'])
-            ->withCount(['applications', 'milestones', 'milestones as completed_milestones_count' => function ($query) {
-                $query->where('progress_status', 'completed');
-            }])
+            ->withCount(['applications', 'milestones'])
             ->where('company_id', $request->user()->id)
             ->latest()
             ->get();
+
+        // Add completed_milestones_count manually using DeveloperMilestone for each project
+        foreach ($projects as $project) {
+            $completedCount = \App\Models\DeveloperMilestone::whereIn('milestone_id', $project->milestones->pluck('id'))
+                ->where('progress_status', 'completed')
+                ->count();
+            // Assign completed milestones to the project to match frontend expectations
+            // Note: Since each developer has their own completions, this number could be higher than total milestones 
+            // if multiple devs complete the same milestone. A better metric is average progress or individual progress.
+            // For now, let's keep it as total completed milestones across all developers for the company dashboard overview.
+            $project->completed_milestones_count = $completedCount;
+            
+            // Re-adjust total milestones count to be milestones * accepted devs for an accurate percentage if needed, 
+            // but for simplicity the frontend just divides completed / total. 
+            // Let's set milestones_count to total expected completions:
+            $acceptedDevsCount = $project->applications()->where('status', 'accepted')->count();
+            $project->milestones_count = $project->milestones->count() * max(1, $acceptedDevsCount); 
+        }
 
         return \App\Http\Resources\ProjectResource::collection($projects);
     }
@@ -330,10 +363,8 @@ class ProjectController extends Controller
     }
 
     /**
-     * Finalizar proyecto - Cobra el 50% restante y paga al freelancer
+     * Finalizar proyecto - Cobra el 50% restante y paga a los freelancers
      * Solo se puede llamar cuando todas las milestones están completadas
-     * 
-     * CORRECCIÓN: Ahora calcula el monto ya pagado por milestones y libera solo el restante
      */
     public function complete(Request $r, Project $project)
     {
@@ -347,29 +378,35 @@ class ProjectController extends Controller
             ], 400);
         }
 
-        // Verificar que hay un desarrollador asignado
-        $acceptedApp = $project->applications()->where('status', 'accepted')->first();
-        if (!$acceptedApp) {
+        // Verificar que hay al menos un desarrollador asignado
+        $acceptedApps = $project->applications()->where('status', 'accepted')->get();
+        if ($acceptedApps->isEmpty()) {
             return response()->json([
-                'message' => 'No hay un desarrollador asignado a este proyecto.'
+                'message' => 'No hay desarrolladores asignados a este proyecto.'
             ], 400);
         }
 
-        // Verificar que todas las milestones están completadas
+        // Verificar que todas las milestones están completadas por todos los desarrolladores
         $totalMilestones = $project->milestones()->count();
+        $acceptedDevsCount = $acceptedApps->count();
+        $totalExpectedCompletions = $totalMilestones * $acceptedDevsCount;
+
         if ($totalMilestones === 0) {
             return response()->json([
                 'message' => 'El proyecto debe tener al menos una milestone para poder finalizarlo.'
             ], 400);
         }
 
-        $completedMilestones = $project->milestones()->where('progress_status', 'completed')->count();
-        if ($completedMilestones < $totalMilestones) {
+        $completedMilestones = \App\Models\DeveloperMilestone::whereIn('milestone_id', $project->milestones->pluck('id'))
+            ->where('progress_status', 'completed')
+            ->count();
+
+        if ($completedMilestones < $totalExpectedCompletions) {
             return response()->json([
-                'message' => 'No se puede finalizar el proyecto. Hay milestones pendientes de completar.',
+                'message' => 'No se puede finalizar el proyecto. Hay milestones pendientes de completar por algunos desarrolladores.',
                 'completed' => $completedMilestones,
-                'total' => $totalMilestones,
-                'progress_percentage' => round(($completedMilestones / $totalMilestones) * 100)
+                'total' => $totalExpectedCompletions,
+                'progress_percentage' => round(($completedMilestones / $totalExpectedCompletions) * 100)
             ], 400);
         }
 
@@ -377,13 +414,9 @@ class ProjectController extends Controller
         $totalBudget = $project->budget_max ?? $project->budget_min ?? 0;
         $remainingToFund = $totalBudget * 0.5; // El 50% restante
 
-        // Calcular monto ya pagado por las milestones completadas
-        $paidAmount = $project->milestones()
-            ->where('progress_status', 'completed')
-            ->sum('amount');
-
-        // Calcular el monto restante por pagar (50% del total)
+        // Calcular el monto restante por pagar (50% del total a dividir entre devs)
         $remainingToPay = $totalBudget * 0.5;
+        $remainingToPayPerDev = round($remainingToPay / $acceptedDevsCount, 2);
 
         // Verificar que la empresa tenga suficientes fondos para el 50% restante
         $wallet = $r->user()->wallet()->firstOrCreate(['user_id' => $r->user()->id], ['balance' => 0]);
@@ -398,7 +431,7 @@ class ProjectController extends Controller
         }
 
         try {
-            \Illuminate\Support\Facades\DB::transaction(function () use ($r, $project, $acceptedApp, $totalBudget, $remainingToFund, $remainingToPay) {
+            \Illuminate\Support\Facades\DB::transaction(function () use ($r, $project, $acceptedApps, $totalBudget, $remainingToFund, $remainingToPayPerDev) {
                 $paymentService = app(\App\Services\PaymentService::class);
 
                 // 1. Cobrar el 50% restante del proyecto (si no se ha financiado completamente)
@@ -407,10 +440,12 @@ class ProjectController extends Controller
                     $paymentService->fundProject($r->user(), $remainingToFund, $project);
                 }
 
-                // 2. Liberar el 50% RESTANTE al freelancer (no el 100%)
-                // Esto corrige el error de doble pago - solo liberamos lo que falta
-                if ($remainingToPay > 0) {
-                    $paymentService->releaseFunds($r->user(), $remainingToPay, $project);
+                // 2. Liberar el 50% RESTANTE a los freelancers dividiendo entre ellos
+                if ($remainingToPayPerDev > 0) {
+                    // Update: releaseFunds service needs the individual app to know who to pay
+                    foreach ($acceptedApps as $app) {
+                       $paymentService->releaseFundsToDeveloper($app, $remainingToPayPerDev, $project);
+                    }
                 }
 
                 // 3. Marcar el proyecto como completado

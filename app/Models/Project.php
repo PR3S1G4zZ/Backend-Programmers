@@ -101,36 +101,46 @@ class Project extends Model
     }
 
     /**
-     * Calcular el porcentaje de progreso del proyecto basado en milestones
+     * Calcular el porcentaje de progreso promedio del proyecto basado en milestones y desarrolladores
      * Retorna valor entre 0 y 100
      */
     public function getProgressPercentageAttribute()
     {
         $totalMilestones = $this->milestones()->count();
-        
-        if ($totalMilestones === 0) {
+        $acceptedDevsCount = $this->applications()->where('status', 'accepted')->count();
+
+        if ($totalMilestones === 0 || $acceptedDevsCount === 0) {
             return 0;
         }
+
+        $totalExpectedCompletions = $totalMilestones * $acceptedDevsCount;
         
-        $completedMilestones = $this->milestones()->where('progress_status', 'completed')->count();
+        $completedMilestones = \App\Models\DeveloperMilestone::whereIn('milestone_id', $this->milestones->pluck('id'))
+            ->where('progress_status', 'completed')
+            ->count();
         
-        return round(($completedMilestones / $totalMilestones) * 100);
+        return round(($completedMilestones / $totalExpectedCompletions) * 100);
     }
 
     /**
-     * Verificar si todas las milestones están completadas
+     * Verificar si todas las milestones están completadas por todos los desarrolladores
      */
     public function getAllMilestonesCompletedAttribute()
     {
         $totalMilestones = $this->milestones()->count();
-        
-        if ($totalMilestones === 0) {
+        $acceptedDevsCount = $this->applications()->where('status', 'accepted')->count();
+
+        if ($totalMilestones === 0 || $acceptedDevsCount === 0) {
             return false;
         }
+
+        $totalExpectedCompletions = $totalMilestones * $acceptedDevsCount;
         
-        $completedMilestones = $this->milestones()->where('progress_status', 'completed')->count();
+        $completedMilestones = \App\Models\DeveloperMilestone::whereIn('milestone_id', $this->milestones->pluck('id'))
+            ->where('progress_status', 'completed')
+            ->count();
         
-        return $completedMilestones === $totalMilestones;
+        return $completedMilestones === $totalExpectedCompletions;
     }
 
     /**

@@ -10,18 +10,41 @@ class MilestoneController extends Controller
 {
     public function index(Request $request, Project $project)
     {
-        // Policy check
-        // We pass the class name and the project for the 'viewAny' check if needed, 
-        // essentially validating if the user has access to THIS project's milestones.
-        // Since our Policy viewAny returns true, we rely on the project relationship check here or in a middleware.
-        // For stricter control:
         $user = $request->user();
         if ($user->id !== $project->company_id && 
             !$project->applications()->where('developer_id', $user->id)->where('status', 'accepted')->exists()) {
              abort(403, 'Unauthorized');
         }
 
-        return $project->milestones()->orderBy('order')->get();
+        $milestones = $project->milestones()->orderBy('order')->get();
+
+        if ($user->user_type === 'programmer') {
+            // Load developer specific progress
+            foreach ($milestones as $milestone) {
+                $devMilestone = \App\Models\DeveloperMilestone::firstOrCreate(
+                    ['milestone_id' => $milestone->id, 'developer_id' => $user->id],
+                    ['progress_status' => 'todo', 'deliverables' => []]
+                );
+                $milestone->progress_status = $devMilestone->progress_status;
+                $milestone->deliverables = $devMilestone->deliverables;
+                $milestone->developer_milestone_id = $devMilestone->id;
+            }
+        } else if ($user->user_type === 'company' && $request->has('developer_id')) {
+            // Company viewing a specific developer's progress
+            $developerId = $request->input('developer_id');
+            foreach ($milestones as $milestone) {
+                $devMilestone = \App\Models\DeveloperMilestone::firstOrCreate(
+                    ['milestone_id' => $milestone->id, 'developer_id' => $developerId],
+                    ['progress_status' => 'todo', 'deliverables' => []]
+                );
+                $milestone->progress_status = $devMilestone->progress_status;
+                $milestone->deliverables = $devMilestone->deliverables;
+                $milestone->developer_milestone_id = $devMilestone->id;
+                $milestone->developer_id = $developerId;
+            }
+        }
+
+        return response()->json($milestones);
     }
 
     public function store(Request $request, Project $project)
@@ -50,10 +73,10 @@ class MilestoneController extends Controller
             'description' => 'sometimes|string',
             'amount' => 'sometimes|numeric',
             'progress_status' => 'sometimes|in:todo,in_progress,review,completed',
-            'due_date' => 'nullable|date'
+            'due_date' => 'nullable|date',
+            'developer_id' => 'sometimes|exists:users,id'
         ]);
         
-        // Restrict amount field for developers (only company can change amount)
         $user = $request->user();
         $isDeveloper = $user->id !== $project->company_id && 
             $project->applications()->where('developer_id', $user->id)->where('status', 'accepted')->exists();
@@ -61,31 +84,42 @@ class MilestoneController extends Controller
         if ($isDeveloper && isset($data['amount'])) {
             unset($data['amount']);
         }
-        
-        // Strict State Transition Logic
-        if (isset($data['progress_status'])) {
-            $newStatus = $data['progress_status'];
-            $currentStatus = $milestone->progress_status;
 
-            // Prevent direct jump to 'review' without 'submit' endpoint
+        // Si se envía progress_status, actualizamos el estado INDIVIDUAL en DeveloperMilestone
+        if (isset($data['progress_status'])) {
+            $developerId = $isDeveloper ? $user->id : $request->input('developer_id');
+            
+            if (!$developerId) {
+                return response()->json(['message' => 'developer_id es requerido para actualizar el estado.'], 400);
+            }
+
+            $devMilestone = \App\Models\DeveloperMilestone::firstOrCreate(
+                ['milestone_id' => $milestone->id, 'developer_id' => $developerId],
+                ['progress_status' => 'todo', 'deliverables' => []]
+            );
+
+            $newStatus = $data['progress_status'];
+            $currentStatus = $devMilestone->progress_status;
+
             if ($newStatus === 'review' && $currentStatus !== 'review') {
                 return response()->json(['message' => 'Para enviar a revisión, debes usar la opción de "Entregar" y adjuntar entregables.'], 400);
             }
 
-            // Prevent direct jump to 'completed' without 'approve' endpoint
             if ($newStatus === 'completed' && $currentStatus !== 'completed') {
                 return response()->json(['message' => 'Para completar, la empresa debe aprobar el hito explícitamente.'], 400);
             }
-            
-            // Allow moving back to 'in_progress' from 'review' (Reject logic handled in separate endpoint, but manual move allowed?)
-            // Actually, Reject endpoint handles logic. Manual move by developer from review -> in_progress? 
-            // If developer realizes they made a mistake.
-            if ($currentStatus === 'review' && $newStatus === 'in_progress') {
-                // Allow
-            }
+
+            $devMilestone->update(['progress_status' => $newStatus]);
+
+            // Eliminamos variables de progreso del array principal
+            unset($data['progress_status']);
+            unset($data['developer_id']);
         }
 
-        $milestone->update($data);
+        // Actualizar datos base del hito si quedan
+        if (!empty($data)) {
+            $milestone->update($data);
+        }
 
         return response()->json($milestone);
     }
@@ -106,7 +140,12 @@ class MilestoneController extends Controller
             'deliverables.*' => 'required|string'
         ]);
 
-        $milestone->update([
+        $devMilestone = \App\Models\DeveloperMilestone::firstOrCreate(
+            ['milestone_id' => $milestone->id, 'developer_id' => $request->user()->id],
+            ['progress_status' => 'todo']
+        );
+
+        $devMilestone->update([
             'deliverables' => $data['deliverables'],
             'progress_status' => 'review'
         ]);
@@ -118,37 +157,45 @@ class MilestoneController extends Controller
     {
         $this->authorize('approve', $milestone);
 
-        if ($milestone->progress_status !== 'review') {
-            return response()->json(['message' => 'El hito no está en revisión.'], 400);
+        $developerId = $request->input('developer_id');
+        if (!$developerId) {
+            return response()->json(['message' => 'developer_id es requerido para aprobar.'], 400);
         }
 
-        try {
-            $paymentService = app(\App\Services\PaymentService::class);
-            $paymentService->releaseMilestone($request->user(), $milestone->amount, $project);
-            
-            $milestone->update([
-                'progress_status' => 'completed',
-                // 'status' => 'released' // Keep status as 'funded' or whatever it was, maybe? Or just don't set to released.
-                // Assuming 'status' field tracks payment status. If we don't release, maybe we shouldn't change it to 'released'.
-                // Let's keep it simply as completed for progress.
-            ]);
+        $devMilestone = \App\Models\DeveloperMilestone::where('milestone_id', $milestone->id)
+            ->where('developer_id', $developerId)
+            ->first();
 
-            return response()->json($milestone);
-
-        } catch (\Exception $e) {
-             return response()->json(['message' => 'Error liberando fondos: ' . $e->getMessage()], 400);
+        if (!$devMilestone || $devMilestone->progress_status !== 'review') {
+            return response()->json(['message' => 'El hito no está en revisión para este desarrollador.'], 400);
         }
+
+        // Eliminado pago de hito. Solo se marca como completado individualmente.
+        $devMilestone->update([
+            'progress_status' => 'completed',
+        ]);
+
+        return response()->json($milestone);
     }
 
     public function reject(Request $request, Project $project, Milestone $milestone)
     {
         $this->authorize('reject', $milestone);
 
-        if ($milestone->progress_status !== 'review') {
-             return response()->json(['message' => 'El hito no está en revisión.'], 400);
+        $developerId = $request->input('developer_id');
+        if (!$developerId) {
+            return response()->json(['message' => 'developer_id es requerido para rechazar.'], 400);
         }
 
-        $milestone->update([
+        $devMilestone = \App\Models\DeveloperMilestone::where('milestone_id', $milestone->id)
+            ->where('developer_id', $developerId)
+            ->first();
+
+        if (!$devMilestone || $devMilestone->progress_status !== 'review') {
+             return response()->json(['message' => 'El hito no está en revisión para este desarrollador.'], 400);
+        }
+
+        $devMilestone->update([
             'progress_status' => 'in_progress',
         ]);
 

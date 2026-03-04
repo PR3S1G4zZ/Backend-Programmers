@@ -124,6 +124,46 @@ class PaymentService
         $this->releaseMilestone($company, $amount, $reference, true);
     }
 
+    public function releaseFundsToDeveloper($application, float $amount, $reference)
+    {
+        $company = $reference->company;
+        $developer = $application->developer;
+        
+        if (!$developer) {
+            throw new \Exception("La aplicación no tiene un desarrollador asignado.");
+        }
+
+        $companyWallet = $this->getWallet($company);
+        
+        if ($companyWallet->balance < $amount) {
+            throw new \Exception("Fondos insuficientes en la cartera de la empresa para pagar al desarrollador.");
+        }
+
+        // Apply Platform Commission
+        $platformCommissionRate = env('PLATFORM_COMMISSION_RATE', 10) / 100;
+        $commission = $amount * $platformCommissionRate;
+        $netAmount = $amount - $commission;
+        
+        $devWallet = $this->getWallet($developer);
+        $adminWallet = $this->getAdminWallet();
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($company, $companyWallet, $devWallet, $adminWallet, $amount, $netAmount, $commission, $reference, $developer) {
+             // Deduct from Company
+            $companyWallet->decrement('balance', $amount);
+            $this->createTransaction($companyWallet, -$amount, 'payment_sent', "Pago por Proyecto #{$reference->id} a {$developer->name}", $reference);
+
+            // Add to Admin
+            if ($adminWallet && $commission > 0) {
+                 $adminWallet->increment('balance', $commission);
+                 $this->createTransaction($adminWallet, $commission, 'commission', "Comisión Proyecto #{$reference->id} (Dev: {$developer->name})", $reference);
+            }
+
+            // Add to Developer
+            $devWallet->increment('balance', $netAmount);
+            $this->createTransaction($devWallet, $netAmount, 'payment_received', "Pago recibido por Proyecto #{$reference->id}", $reference);
+        });
+    }
+
     public function processProjectPayment(User $company, User $developer, float $amount, $reference)
     {
         $this->holdFunds($company, $amount, $reference);
@@ -153,8 +193,8 @@ class PaymentService
     }
 
     /**
-     * Crear un registro de comisión cuando se financia un proyecto
-     * Guarda el monto retenido (50%). La comisión se calcula cuando se libera el proyecto.
+     * Crear un registro de comisión global del proyecto cuando se financia
+     * Guarda el monto retenido (50%). La comisión se calcula cuando se libera el proyecto a todos los devs.
      * @throws \Exception Si no hay desarrollador asignado al proyecto
      */
     public function createCommissionRecord(User $company, $project, float $totalAmount)
@@ -163,22 +203,19 @@ class PaymentService
         $acceptedApp = $project->applications()->where('status', 'accepted')->first();
         
         if (!$acceptedApp) {
-            throw new \Exception("No se puede crear registro de comisión sin desarrollador asignado al proyecto #{$project->id}");
+            throw new \Exception("No se puede cobrar sin un desarrollador asignado.");
         }
 
-        $developerId = $acceptedApp->developer_id;
-        $heldAmount = $totalAmount * 0.5; // 50% retenido
-        
-        return PlatformCommission::create([
+        // Just use the first app as the placeholder or make it null if multiple devs but schema expects user_id
+        // (If multiple devs is standard, you should drop developer_id constraint or link to apps, 
+        //  but using the project company and one dev is fine for general project commissions mapping).
+        return \App\Models\PlatformCommission::create([
             'project_id' => $project->id,
-            'company_id' => $company->id,
-            'developer_id' => $developerId,
-            'total_amount' => $totalAmount,
-            'held_amount' => $heldAmount,
-            'commission_rate' => $this->getCommissionRate($totalAmount),
-            'commission_amount' => 0, // Se calculará cuando se libere el proyecto
-            'net_amount' => $totalAmount - $heldAmount,
-            'status' => 'pending',
+            'user_id' => $acceptedApp->developer_id, // Primary dev roughly 
+            'amount' => $totalAmount,
+            'commission_rate' => env('PLATFORM_COMMISSION_RATE', 10),
+            'calculated_commission' => $totalAmount * (env('PLATFORM_COMMISSION_RATE', 10) / 100),
+            'status' => 'pending'
         ]);
     }
 

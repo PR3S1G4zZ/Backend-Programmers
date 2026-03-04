@@ -50,7 +50,14 @@ class BackupController extends Controller
             }
         }
         
-        throw new \Exception("mysqldump executable not found.");
+        // Also check if we might be in a pg environment and user asked for mysqldump loosely
+        $pgDumpProcess = Process::fromShellCommandline('pg_dump --version');
+        $pgDumpProcess->run();
+        if ($pgDumpProcess->isSuccessful()) {
+            return 'pg_dump';
+        }
+
+        throw new \Exception("Backup binary (mysqldump / pg_dump) not found.");
     }
 
     private function getMysqlPath(): string
@@ -77,7 +84,13 @@ class BackupController extends Controller
             }
         }
         
-        throw new \Exception("mysql executable not found.");
+        $psqlProcess = Process::fromShellCommandline('psql --version');
+        $psqlProcess->run();
+        if ($psqlProcess->isSuccessful()) {
+            return 'psql';
+        }
+
+        throw new \Exception("Database CLI executable not found.");
     }
 
     public function index(): JsonResponse
@@ -124,18 +137,32 @@ class BackupController extends Controller
             $dbUser = env('DB_USERNAME', 'root');
             $dbPass = env('DB_PASSWORD', '');
             $dbName = env('DB_DATABASE', 'laravel');
+            $dbConnection = env('DB_CONNECTION', config('database.default'));
 
-            // Build command using --result-file instead of > to avoid shell redirection path issues on Windows
-            $command = sprintf(
-                '"%s" --host=%s --port=%s --user=%s %s --result-file="%s" %s',
-                $dumpPath,
-                escapeshellarg($dbHost),
-                escapeshellarg($dbPort),
-                escapeshellarg($dbUser),
-                $dbPass ? '--password=' . escapeshellarg($dbPass) : '',
-                $filePath,
-                escapeshellarg($dbName)
-            );
+            if ($dbConnection === 'pgsql') {
+                $command = sprintf(
+                    'PGPASSWORD=%s %s -h %s -p %s -U %s -F c -f "%s" %s',
+                    escapeshellarg($dbPass),
+                    $dumpPath === 'pg_dump' ? 'pg_dump' : $dumpPath,
+                    escapeshellarg($dbHost),
+                    escapeshellarg($dbPort),
+                    escapeshellarg($dbUser),
+                    $filePath,
+                    escapeshellarg($dbName)
+                );
+            } else {
+                // Build command using --result-file instead of > to avoid shell redirection path issues on Windows
+                $command = sprintf(
+                    '"%s" --host=%s --port=%s --user=%s %s --result-file="%s" %s',
+                    $dumpPath,
+                    escapeshellarg($dbHost),
+                    escapeshellarg($dbPort),
+                    escapeshellarg($dbUser),
+                    $dbPass ? '--password=' . escapeshellarg($dbPass) : '',
+                    $filePath,
+                    escapeshellarg($dbName)
+                );
+            }
 
             // Build process environment ensuring SYSTEMROOT exists for WinSock/TCP connections (bug in php built-in server)
             $env = array_merge($_SERVER, $_ENV);
@@ -197,18 +224,32 @@ class BackupController extends Controller
             $dbUser = env('DB_USERNAME', 'root');
             $dbPass = env('DB_PASSWORD', '');
             $dbName = env('DB_DATABASE', 'laravel');
+            $dbConnection = env('DB_CONNECTION', config('database.default'));
 
-            // The command needs to read from the temp file
-            $command = sprintf(
-                '"%s" --host=%s --port=%s --user=%s %s %s < "%s"',
-                $mysqlPath,
-                escapeshellarg($dbHost),
-                escapeshellarg($dbPort),
-                escapeshellarg($dbUser),
-                $dbPass ? '--password=' . escapeshellarg($dbPass) : '',
-                escapeshellarg($dbName),
-                $tempPath
-            );
+            if ($dbConnection === 'pgsql') {
+                 // For postgres, we either use pg_restore or psql depending on dump format
+                 $command = sprintf(
+                    'PGPASSWORD=%s psql -h %s -p %s -U %s -d %s -f "%s"',
+                    escapeshellarg($dbPass),
+                    escapeshellarg($dbHost),
+                    escapeshellarg($dbPort),
+                    escapeshellarg($dbUser),
+                    escapeshellarg($dbName),
+                    $tempPath
+                );
+            } else {
+                // The command needs to read from the temp file
+                $command = sprintf(
+                    '"%s" --host=%s --port=%s --user=%s %s %s < "%s"',
+                    $mysqlPath,
+                    escapeshellarg($dbHost),
+                    escapeshellarg($dbPort),
+                    escapeshellarg($dbUser),
+                    $dbPass ? '--password=' . escapeshellarg($dbPass) : '',
+                    escapeshellarg($dbName),
+                    $tempPath
+                );
+            }
 
             $env = array_merge($_SERVER, $_ENV);
             $env['SYSTEMROOT'] = getenv('SYSTEMROOT') ?: 'C:\\Windows';
@@ -224,7 +265,7 @@ class BackupController extends Controller
                     throw new ProcessFailedException($process);
                 }
             } catch (\Exception $processException) {
-                // If mysql.exe fails due to Winsock or PATH missing, use PDO unprepared execution natively.
+                // If mysql.exe fails due to Winsock or PATH missing, or pg_restore isn't available
                 $this->executeFallbackRestore($tempPath);
             }
 
@@ -311,22 +352,50 @@ class BackupController extends Controller
 
     private function generateFallbackBackup(string $filePath)
     {
-        $tables = DB::select('SHOW TABLES');
+        $dbConnection = env('DB_CONNECTION', config('database.default'));
         $dbName = env('DB_DATABASE', 'laravel');
-        $property = 'Tables_in_' . $dbName;
+        $tables = [];
+
+        if ($dbConnection === 'pgsql') {
+            $query = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'";
+            $tablesData = DB::select($query);
+            foreach ($tablesData as $table) {
+                $tables[] = $table->table_name;
+            }
+        } else {
+            $tablesData = DB::select('SHOW TABLES');
+            $property = 'Tables_in_' . $dbName;
+            foreach ($tablesData as $table) {
+                // Some environments use different casing or properties for SHOW TABLES results
+                $tables[] = isset($table->$property) ? $table->$property : (array_values((array)$table)[0]);
+            }
+        }
         
         $sql = "-- Fallback PHP Native Backup\n";
         $sql .= "-- Generated by FlexWork\n\n";
-        $sql .= "SET FOREIGN_KEY_CHECKS=0;\n\n";
+
+        if ($dbConnection === 'pgsql') {
+            // PostgreSQL Disable Triggers/Constraints
+            $sql .= "SET session_replication_role = 'replica';\n\n";
+        } else {
+            // MySQL Disable Checks
+            $sql .= "SET FOREIGN_KEY_CHECKS=0;\n\n";
+        }
         
-        foreach ($tables as $table) {
-            // Some environments use different casing or properties for SHOW TABLES results
-            $tableName = isset($table->$property) ? $table->$property : (array_values((array)$table)[0]);
+        foreach ($tables as $tableName) {
             
-            // Get create table syntax
-            $createTable = DB::select("SHOW CREATE TABLE `{$tableName}`");
-            $sql .= "DROP TABLE IF EXISTS `{$tableName}`;\n";
-            $sql .= array_values((array)$createTable[0])[1] . ";\n\n";
+            // Get create table syntax if possible, though dumping structure via raw PHP across DBs is complex.
+            // For Postgres, it's very difficult to get the full CREATE TABLE statement in one query.
+            // We'll rely on TRUNCATE/DELETE for restoring if we can't get CREATE statements.
+            
+            if ($dbConnection === 'mysql') {
+                $createTable = DB::select("SHOW CREATE TABLE `{$tableName}`");
+                $sql .= "DROP TABLE IF EXISTS `{$tableName}`;\n";
+                $sql .= array_values((array)$createTable[0])[1] . ";\n\n";
+            } else if ($dbConnection === 'pgsql') {
+                // Just clear the table before insert since we likely pre-created the schema via artisan migrate
+                $sql .= "TRUNCATE TABLE \"{$tableName}\" CASCADE;\n\n";
+            }
             
             // Get data
             $rows = DB::table($tableName)->get();
@@ -335,18 +404,34 @@ class BackupController extends Controller
                 $keys = array_keys($rowArray);
                 $values = array_values($rowArray);
                 
-                $escapedValues = array_map(function($val) {
+                $escapedValues = array_map(function($val) use ($dbConnection) {
                     if (is_null($val)) return 'NULL';
-                    $val = str_replace(["\\", "'", "\n", "\r"], ["\\\\", "\\'", "\\n", "\\r"], $val);
-                    return "'" . $val . "'";
+                    if ($dbConnection === 'pgsql') {
+                        // Basic postgres escaping
+                        $val = str_replace("'", "''", $val);
+                        return "'" . $val . "'";
+                    } else {
+                        // MySQL escaping
+                        $val = str_replace(["\\", "'", "\n", "\r"], ["\\\\", "\\'", "\\n", "\\r"], $val);
+                        return "'" . $val . "'";
+                    }
                 }, $values);
                 
-                $sql .= "INSERT INTO `{$tableName}` (`" . implode("`, `", $keys) . "`) VALUES (" . implode(", ", $escapedValues) . ");\n";
+                if ($dbConnection === 'pgsql') {
+                    $sql .= "INSERT INTO \"{$tableName}\" (\"" . implode('", "', $keys) . "\") VALUES (" . implode(", ", $escapedValues) . ");\n";
+                } else {
+                    $sql .= "INSERT INTO `{$tableName}` (`" . implode("`, `", $keys) . "`) VALUES (" . implode(", ", $escapedValues) . ");\n";
+                }
             }
             $sql .= "\n";
         }
         
-        $sql .= "SET FOREIGN_KEY_CHECKS=1;\n";
+        if ($dbConnection === 'pgsql') {
+            $sql .= "SET session_replication_role = 'origin';\n";
+        } else {
+            $sql .= "SET FOREIGN_KEY_CHECKS=1;\n";
+        }
+
         File::put($filePath, $sql);
     }
 
