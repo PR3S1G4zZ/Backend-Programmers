@@ -1317,8 +1317,8 @@ class AdminController extends Controller
 
     private function buildGeographicData(): array
     {
-        $companyCountries = CompanyProfile::whereNotNull('country')->pluck('country');
-        $developerCountries = DeveloperProfile::whereNotNull('country')->pluck('country');
+        $companyCountries = \App\Models\CompanyProfile::whereNotNull('country')->pluck('country');
+        $developerCountries = \App\Models\DeveloperProfile::whereNotNull('country')->pluck('country');
         $countries = $companyCountries->merge($developerCountries);
 
         $totals = $countries->countBy()->sortDesc();
