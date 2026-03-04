@@ -11,6 +11,7 @@ class Milestone extends Model
 
     protected $fillable = [
         'project_id',
+        'assigned_developer_id',
         'title',
         'description',
         'amount',
@@ -30,5 +31,10 @@ class Milestone extends Model
     public function project()
     {
         return $this->belongsTo(Project::class);
+    }
+
+    public function developer()
+    {
+        return $this->belongsTo(User::class, 'assigned_developer_id');
     }
 }

@@ -53,6 +53,11 @@ class ProjectResource extends JsonResource
             'has_applied' => $this->when(isset($this->has_applied), $this->has_applied),
             // Información de progreso del proyecto
             'progress_percentage' => $this->progress_percentage,
+            'developer_progress' => $request->has('developer_id') 
+                ? $this->getDeveloperProgress($request->input('developer_id'))
+                : ($request->user() && $request->user()->user_type === 'programmer' 
+                    ? $this->getDeveloperProgress($request->user()->id) 
+                    : null),
             'all_milestones_completed' => $this->all_milestones_completed,
             'milestones_count' => $this->whenCounted('milestones'),
             'completed_milestones_count' => $this->when(isset($this->completed_milestones_count), $this->completed_milestones_count),

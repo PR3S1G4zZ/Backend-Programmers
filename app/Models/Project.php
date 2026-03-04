@@ -101,46 +101,61 @@ class Project extends Model
     }
 
     /**
-     * Calcular el porcentaje de progreso promedio del proyecto basado en milestones y desarrolladores
+     * Calcular el porcentaje de progreso promedio del proyecto basado en hitos completados
      * Retorna valor entre 0 y 100
      */
     public function getProgressPercentageAttribute()
     {
         $totalMilestones = $this->milestones()->count();
-        $acceptedDevsCount = $this->applications()->where('status', 'accepted')->count();
 
-        if ($totalMilestones === 0 || $acceptedDevsCount === 0) {
+        if ($totalMilestones === 0) {
             return 0;
         }
 
-        $totalExpectedCompletions = $totalMilestones * $acceptedDevsCount;
-        
-        $completedMilestones = \App\Models\DeveloperMilestone::whereIn('milestone_id', $this->milestones->pluck('id'))
+        $completedMilestones = $this->milestones()
             ->where('progress_status', 'completed')
             ->count();
         
-        return round(($completedMilestones / $totalExpectedCompletions) * 100);
+        return round(($completedMilestones / $totalMilestones) * 100);
     }
 
     /**
-     * Verificar si todas las milestones están completadas por todos los desarrolladores
+     * Obtener el progreso de un desarrollador específico basado en sus hitos asignados
+     */
+    public function getDeveloperProgress($developerId)
+    {
+        $assignedMilestonesCount = $this->milestones()
+            ->where('assigned_developer_id', $developerId)
+            ->count();
+
+        if ($assignedMilestonesCount === 0) {
+            return 0;
+        }
+
+        $completedMilestonesCount = $this->milestones()
+            ->where('assigned_developer_id', $developerId)
+            ->where('progress_status', 'completed')
+            ->count();
+
+        return round(($completedMilestonesCount / $assignedMilestonesCount) * 100);
+    }
+
+    /**
+     * Verificar si todas las milestones están completadas
      */
     public function getAllMilestonesCompletedAttribute()
     {
         $totalMilestones = $this->milestones()->count();
-        $acceptedDevsCount = $this->applications()->where('status', 'accepted')->count();
 
-        if ($totalMilestones === 0 || $acceptedDevsCount === 0) {
+        if ($totalMilestones === 0) {
             return false;
         }
 
-        $totalExpectedCompletions = $totalMilestones * $acceptedDevsCount;
-        
-        $completedMilestones = \App\Models\DeveloperMilestone::whereIn('milestone_id', $this->milestones->pluck('id'))
+        $completedMilestones = $this->milestones()
             ->where('progress_status', 'completed')
             ->count();
         
-        return $completedMilestones === $totalExpectedCompletions;
+        return $completedMilestones === $totalMilestones;
     }
 
     /**
