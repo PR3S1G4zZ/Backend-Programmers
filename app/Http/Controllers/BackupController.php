@@ -57,7 +57,7 @@ class BackupController extends Controller
             return 'pg_dump';
         }
 
-        throw new \Exception("Backup binary (mysqldump / pg_dump) not found.");
+        return '';
     }
 
     private function getMysqlPath(): string
@@ -90,7 +90,7 @@ class BackupController extends Controller
             return 'psql';
         }
 
-        throw new \Exception("Database CLI executable not found.");
+        return '';
     }
 
     public function index(): JsonResponse
@@ -131,7 +131,6 @@ class BackupController extends Controller
             $filePath = $dirPath . DIRECTORY_SEPARATOR . $filename;
 
             $dumpPath = $this->getMysqlDumpPath();
-            
             $dbHost = env('DB_HOST', '127.0.0.1');
             $dbPort = env('DB_PORT', '3306');
             $dbUser = env('DB_USERNAME', 'root');
@@ -139,7 +138,10 @@ class BackupController extends Controller
             $dbName = env('DB_DATABASE', 'laravel');
             $dbConnection = env('DB_CONNECTION', config('database.default'));
 
-            if ($dbConnection === 'pgsql') {
+            if (!$dumpPath) {
+                $this->generateFallbackBackup($filePath);
+            } else {
+                if ($dbConnection === 'pgsql') {
                 $command = sprintf(
                     'PGPASSWORD=%s %s -h %s -p %s -U %s -F c -f "%s" %s',
                     escapeshellarg($dbPass),
@@ -174,14 +176,15 @@ class BackupController extends Controller
             $process = Process::fromShellCommandline($command, dirname($dumpPath), $env);
             $process->setTimeout(300); // 5 minutes max
             
-            try {
-                $process->run();
-                if (!$process->isSuccessful()) {
-                    throw new ProcessFailedException($process);
+                try {
+                    $process->run();
+                    if (!$process->isSuccessful()) {
+                        throw new ProcessFailedException($process);
+                    }
+                } catch (\Exception $processException) {
+                    // If the mysqldump binary fails due to WinSock (10106) or PATH errors, use pure PHP fallback
+                    $this->generateFallbackBackup($filePath);
                 }
-            } catch (\Exception $processException) {
-                // If the mysqldump binary fails due to WinSock (10106) or PATH errors, use pure PHP fallback
-                $this->generateFallbackBackup($filePath);
             }
 
             ActivityLog::create([
@@ -218,7 +221,6 @@ class BackupController extends Controller
             $tempPath = $file->getRealPath();
 
             $mysqlPath = $this->getMysqlPath();
-            
             $dbHost = env('DB_HOST', '127.0.0.1');
             $dbPort = env('DB_PORT', '3306');
             $dbUser = env('DB_USERNAME', 'root');
@@ -226,7 +228,10 @@ class BackupController extends Controller
             $dbName = env('DB_DATABASE', 'laravel');
             $dbConnection = env('DB_CONNECTION', config('database.default'));
 
-            if ($dbConnection === 'pgsql') {
+            if (!$mysqlPath) {
+                $this->executeFallbackRestore($tempPath);
+            } else {
+                if ($dbConnection === 'pgsql') {
                  // For postgres, we either use pg_restore or psql depending on dump format
                  $command = sprintf(
                     'PGPASSWORD=%s psql -h %s -p %s -U %s -d %s -f "%s"',
@@ -259,14 +264,15 @@ class BackupController extends Controller
             $process = Process::fromShellCommandline($command, dirname($mysqlPath), $env);
             $process->setTimeout(600); // 10 minutes max for large databases
             
-            try {
-                $process->run();
-                if (!$process->isSuccessful()) {
-                    throw new ProcessFailedException($process);
+                try {
+                    $process->run();
+                    if (!$process->isSuccessful()) {
+                        throw new ProcessFailedException($process);
+                    }
+                } catch (\Exception $processException) {
+                    // If mysql.exe fails due to Winsock or PATH missing, or pg_restore isn't available
+                    $this->executeFallbackRestore($tempPath);
                 }
-            } catch (\Exception $processException) {
-                // If mysql.exe fails due to Winsock or PATH missing, or pg_restore isn't available
-                $this->executeFallbackRestore($tempPath);
             }
 
             ActivityLog::create([
