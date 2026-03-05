@@ -1142,25 +1142,22 @@ class AdminController extends Controller
         $start = Carbon::now()->subDays(30);
         $end = Carbon::now();
 
-        // Optimized: Use SQL aggregation instead of collection operations
-        $messageStats = Message::whereBetween('created_at', [$start, $end])
-            ->selectRaw('WEEKDAY(created_at) as day, HOUR(created_at) as hour, COUNT(*) as count')
-            ->groupBy('day', 'hour')
-            ->get();
+        // Get all messages and applications in the time range
+        $messages = Message::whereBetween('created_at', [$start, $end])->get(['created_at']);
+        $applications = Application::whereBetween('created_at', [$start, $end])->get(['created_at']);
 
-        $appStats = Application::whereBetween('created_at', [$start, $end])
-            ->selectRaw('WEEKDAY(created_at) as day, HOUR(created_at) as hour, COUNT(*) as count')
-            ->groupBy('day', 'hour')
-            ->get();
+        // Process messages
+        foreach ($messages as $message) {
+            $dayIdx = ($message->created_at->dayOfWeek - 1 + 7) % 7; // Convert to 0=Lun, 6=Dom
+            $hourIdx = $message->created_at->hour;
+            $heatmap[$dayIdx]['hours'][$hourIdx]++;
+        }
 
-        foreach ([$messageStats, $appStats] as $stats) {
-            foreach ($stats as $stat) {
-                $dayIdx = $stat->day; // WEEKDAY returns 0=Lun, 6=Dom
-                $hourIdx = $stat->hour;
-                if (isset($heatmap[$dayIdx]['hours'][$hourIdx])) {
-                    $heatmap[$dayIdx]['hours'][$hourIdx] += $stat->count;
-                }
-            }
+        // Process applications
+        foreach ($applications as $app) {
+            $dayIdx = ($app->created_at->dayOfWeek - 1 + 7) % 7; // Convert to 0=Lun, 6=Dom
+            $hourIdx = $app->created_at->hour;
+            $heatmap[$dayIdx]['hours'][$hourIdx]++;
         }
 
         return $heatmap;
@@ -1173,28 +1170,36 @@ class AdminController extends Controller
 
         $hours = array_fill(0, 24, ['activity' => 0, 'users' => 0]);
 
-        // Optimized: Use SQL aggregation for message stats
-        $messageStats = Message::whereBetween('created_at', [$start, $end])
-            ->selectRaw('HOUR(created_at) as hour, COUNT(*) as total, COUNT(DISTINCT sender_id) as users')
-            ->groupBy('hour')
-            ->get();
+        // Get all messages and applications in the time range
+        $messages = Message::whereBetween('created_at', [$start, $end])->get(['created_at', 'sender_id']);
+        $applications = Application::whereBetween('created_at', [$start, $end])->get(['created_at', 'developer_id']);
 
-        foreach ($messageStats as $stat) {
-            $hour = (int) $stat->hour;
-            $hours[$hour]['activity'] += (int) $stat->total;
-            $hours[$hour]['users'] += (int) $stat->users;
+        // Process messages
+        $messageUsersPerHour = [];
+        foreach ($messages as $message) {
+            $hour = $message->created_at->hour;
+            $hours[$hour]['activity']++;
+            if (!isset($messageUsersPerHour[$hour])) {
+                $messageUsersPerHour[$hour] = [];
+            }
+            $messageUsersPerHour[$hour][$message->sender_id] = true;
+        }
+        foreach ($messageUsersPerHour as $hour => $users) {
+            $hours[$hour]['users'] += count($users);
         }
 
-        // Optimized: Use SQL aggregation for application stats
-        $applicationStats = Application::whereBetween('created_at', [$start, $end])
-            ->selectRaw('HOUR(created_at) as hour, COUNT(*) as total, COUNT(DISTINCT developer_id) as users')
-            ->groupBy('hour')
-            ->get();
-
-        foreach ($applicationStats as $stat) {
-            $hour = (int) $stat->hour;
-            $hours[$hour]['activity'] += (int) $stat->total;
-            $hours[$hour]['users'] += (int) $stat->users;
+        // Process applications
+        $appUsersPerHour = [];
+        foreach ($applications as $app) {
+            $hour = $app->created_at->hour;
+            $hours[$hour]['activity']++;
+            if (!isset($appUsersPerHour[$hour])) {
+                $appUsersPerHour[$hour] = [];
+            }
+            $appUsersPerHour[$hour][$app->developer_id] = true;
+        }
+        foreach ($appUsersPerHour as $hour => $users) {
+            $hours[$hour]['users'] += count($users);
         }
 
         $maxActivity = max(1, ...array_map(fn ($value) => $value['activity'], $hours));
