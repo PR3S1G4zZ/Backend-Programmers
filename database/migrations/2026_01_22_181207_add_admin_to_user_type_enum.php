@@ -11,9 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            //
-        });
+        // El valor 'admin' en el enum user_type ya fue incluido directamente
+        // en la migración 2025_11_10_214135_add_user_type_to_users_table.php
+        // Esta migración existe por historial pero no requiere cambios en la BD.
+        // No ejecutar ningún ALTER TABLE aquí.
     }
 
     /**
@@ -21,8 +22,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            //
-        });
+        // Ver comentario en up()
     }
 };

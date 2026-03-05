@@ -163,12 +163,29 @@ class ProjectController extends Controller
             ->with('developer:id,name,lastname,email,profile_picture')
             ->get()
             ->map(function ($app) use ($project) {
-                $completed = \App\Models\DeveloperMilestone::whereIn('milestone_id', $project->milestones->pluck('id'))
+                // Obtener milestones asignados al desarrollador
+                $assignedMilestones = $project->milestones()
+                    ->where('assigned_developer_id', $app->developer_id)
+                    ->get();
+                
+                $total = $assignedMilestones->count();
+                
+                if ($total === 0) {
+                    return [
+                        'developer_id' => $app->developer_id,
+                        'developer' => $app->developer,
+                        'progress' => 0,
+                        'milestones_completed' => 0,
+                        'total_milestones' => 0
+                    ];
+                }
+                
+                $completed = \App\Models\DeveloperMilestone::whereIn('milestone_id', $assignedMilestones->pluck('id'))
                     ->where('developer_id', $app->developer_id)
                     ->where('progress_status', 'completed')
                     ->count();
-                $total = $project->milestones()->count();
-                $progressPercentage = $total > 0 ? round(($completed / $total) * 100) : 0;
+                
+                $progressPercentage = round(($completed / $total) * 100);
                 
                 return [
                     'developer_id' => $app->developer_id,
@@ -211,13 +228,13 @@ class ProjectController extends Controller
     {
         abort_unless($request->user()->user_type === 'company', 403);
 
-        $projects = Project::with(['company', 'categories', 'skills', 'applications.developer'])
-            ->withCount(['applications', 'milestones', 'milestones as completed_milestones_count' => function ($query) {
-                $query->where('progress_status', 'completed');
-            }])
+        $perPage = $request->get('per_page', 20);
+
+        $projects = Project::with(['categories', 'skills'])
+            ->withCount('applications')
             ->where('company_id', $request->user()->id)
             ->latest()
-            ->get();
+            ->paginate($perPage);
 
         return \App\Http\Resources\ProjectResource::collection($projects);
     }

@@ -355,6 +355,14 @@ class UserSeeder extends Seeder
                 $completedCount = 0;
             }
 
+            // Obtener desarrolladores aceptados en el proyecto
+            $acceptedDevelopers = $project->applications()
+                ->where('status', 'accepted')
+                ->with('developer')
+                ->get()
+                ->pluck('developer')
+                ->filter();
+
             for ($i = 1; $i <= $milestoneCount; $i++) {
                 $milestoneStatus = 'pending';
                 $progressStatus = 'todo';
@@ -367,6 +375,12 @@ class UserSeeder extends Seeder
                     $progressStatus = 'in_progress';
                 }
 
+                // Asignar milestone a un desarrollador aceptado (si hay)
+                $assignedDeveloperId = null;
+                if ($acceptedDevelopers->count() > 0) {
+                    $assignedDeveloperId = $acceptedDevelopers->random()->id;
+                }
+
                 \App\Models\Milestone::create([
                     'project_id' => $project->id,
                     'title' => "Hito $i: " . $faker->randomElement($milestoneTitles),
@@ -377,6 +391,7 @@ class UserSeeder extends Seeder
                     'order' => $i,
                     'due_date' => $faker->dateTimeBetween($project->created_at, $project->deadline ?? '+2 months'),
                     'deliverables' => $progressStatus === 'completed' ? [$faker->url] : null,
+                    'assigned_developer_id' => $assignedDeveloperId,
                 ]);
             }
         }

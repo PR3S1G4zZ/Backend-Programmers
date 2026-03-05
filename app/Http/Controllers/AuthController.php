@@ -99,7 +99,7 @@ class AuthController extends Controller
                          \App\Models\DeveloperProfile::create([
                             'user_id' => $user->id,
                             // Campos iniciales vacíos o por defecto
-                            'title' => 'Programador Web', // Ejemplo por defecto o null
+                            'headline' => 'Programador Web', // Ejemplo por defecto o null
                         ]);
                     }
                 }
@@ -327,20 +327,20 @@ class AuthController extends Controller
 /**
  * Resetear contraseña desde el frontend
  */
-public function resetPassword(Request $request)
-{
-    $request->validate([
-        'token' => 'required',
-        'email' => 'required|email',
-        'password' => [
-            'required',
-            'string',
-            'min:8',
-            'max:15',
-            'confirmed',
-            'regex:/^\S+$/'
-        ]
-    ]);
+    public function resetPassword(Request $request)
+    {
+        $request->validate([
+            'token' => 'required',
+            'email' => 'required|email',
+            'password' => [
+                'required',
+                'string',
+                'min:8',
+                'max:64',
+                'confirmed',
+                'regex:/^\S+$/'
+            ]
+        ]);
 
     $status = Password::reset(
         $request->only('email', 'password', 'password_confirmation', 'token'),
@@ -375,7 +375,7 @@ public function resetPassword(Request $request)
                 'required',
                 'string',
                 'min:8',
-                'max:15', // Consistent with other password validations
+                'max:64', // Consistent with other password validations
                 'confirmed',
                 'regex:/^\S+$/', // No spaces
                 'different:current_password'
@@ -435,10 +435,10 @@ public function resetPassword(Request $request)
                 ]);
 
                 // Crear perfil vacío
-                if (class_exists(\App\Models\DeveloperProfile::class)) {
-                     \App\Models\DeveloperProfile::create([
+                 if (class_exists(\App\Models\DeveloperProfile::class)) {
+                      \App\Models\DeveloperProfile::create([
                         'user_id' => $user->id,
-                        'title' => 'Programador Web',
+                        'headline' => 'Programador Web',
                     ]);
                 }
                 

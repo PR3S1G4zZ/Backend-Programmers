@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Cache;
 use App\Models\User;
 use App\Models\Project;
 use App\Models\Application;
@@ -36,9 +37,9 @@ class AdminController extends Controller
                     'required',
                     'string',
                     'min:8',
-                    'max:15',
+                    'max:64',
                     'regex:/^\S+$/',
-                    'regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,15}$/'
+                    'regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,64}$/'
                 ],
             ]);
 
@@ -531,28 +532,24 @@ class AdminController extends Controller
      */
     public function metrics(Request $request): JsonResponse
     {
-        try {
-
-            $period = $this->sanitizePeriod($request->get('period', 'month'));
+        // Mantener este método pero que solo llame a los 5 separados
+        // con Cache::remember para evitar recalcular en cada request
+        $period = $this->sanitizePeriod($request->get('period', 'month'));
+        
+        $cacheKey = "admin_metrics_{$period}";
+        
+        $data = Cache::remember($cacheKey, 300, function () use ($period) {
             $timeSeries = $this->buildTimeSeries($period);
+            return [
+                'activity'     => $this->buildActivityMetrics($period, $timeSeries),
+                'financial'    => $this->buildFinancialMetrics($period, $timeSeries),
+                'growth'       => $this->buildGrowthMetrics($period, $timeSeries),
+                'projects'     => $this->buildProjectsMetrics($period),
+                'satisfaction' => $this->buildSatisfactionMetrics($period),
+            ];
+        });
 
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'activity' => $this->buildActivityMetrics($period, $timeSeries),
-                    'financial' => $this->buildFinancialMetrics($period, $timeSeries),
-                    'growth' => $this->buildGrowthMetrics($period, $timeSeries),
-                    'projects' => $this->buildProjectsMetrics($period),
-                    'satisfaction' => $this->buildSatisfactionMetrics($period),
-                ],
-            ]);
-        } catch (\Exception $e) {
-            report($e);
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al obtener métricas.'
-            ], 500);
-        }
+        return response()->json(['success' => true, 'data' => $data]);
     }
 
     /**
@@ -1076,23 +1073,22 @@ class AdminController extends Controller
                 ];
             });
 
-        $topProjects = Review::with('project.categories')
-            ->get()
+        $topProjects = Review::select('project_id', DB::raw('AVG(rating) as avg_rating'), DB::raw('COUNT(*) as total_reviews'))
             ->groupBy('project_id')
-            ->map(function($reviews) {
-                $project = $reviews->first()->project;
+            ->orderByDesc('avg_rating')
+            ->take(5)
+            ->with(['project.categories'])
+            ->get()
+            ->map(function ($row) {
+                $project = $row->project;
                 $category = $project?->categories?->first()?->name ?? 'Sin categoría';
-                
                 return [
-                    'project' => $project?->title ?? 'Proyecto',
-                    'rating' => round($reviews->avg('rating'), 1),
-                    'reviews' => $reviews->count(),
+                    'project'  => $project?->title ?? 'Proyecto',
+                    'rating'   => round($row->avg_rating, 1),
+                    'reviews'  => $row->total_reviews,
                     'category' => $category,
                 ];
-            })
-            ->sortByDesc('rating')
-            ->take(5)
-            ->values();
+            });
 
         $qualityMetrics = [
             ['metric' => 'Código Limpio', 'score' => $satisfaction, 'icon' => '💻'],
@@ -1141,26 +1137,35 @@ class AdminController extends Controller
     private function buildActivityHeatmap(): array
     {
         $dayLabels = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-        $heatmap = [];
-
-        foreach ($dayLabels as $label) {
-            $heatmap[] = ['day' => $label, 'hours' => array_fill(0, 24, 0)];
-        }
+        $heatmap = array_map(fn($label) => [
+            'day' => $label,
+            'hours' => array_fill(0, 24, 0)
+        ], $dayLabels);
 
         $start = Carbon::now()->subDays(30);
         $end = Carbon::now();
 
-        $activitySources = [
-            Message::whereBetween('created_at', [$start, $end])->get(['created_at']),
-            Application::whereBetween('created_at', [$start, $end])->get(['created_at']),
-        ];
+        // Query directa SQL en lugar de cargar todos los registros en PHP
+        $messageStats = Message::selectRaw(
+            'DAYOFWEEK(created_at) - 1 as day_idx, HOUR(created_at) as hour_idx, COUNT(*) as cnt'
+        )->whereBetween('created_at', [$start, $end])
+         ->groupBy('day_idx', 'hour_idx')
+         ->get();
 
-        foreach ($activitySources as $records) {
-            foreach ($records as $record) {
-                $dayIndex = (int) $record->created_at->format('N') - 1;
-                $hourIndex = (int) $record->created_at->format('G');
-                if (isset($heatmap[$dayIndex]['hours'][$hourIndex])) {
-                    $heatmap[$dayIndex]['hours'][$hourIndex] += 1;
+        $appStats = Application::selectRaw(
+            'DAYOFWEEK(created_at) - 1 as day_idx, HOUR(created_at) as hour_idx, COUNT(*) as cnt'
+        )->whereBetween('created_at', [$start, $end])
+         ->groupBy('day_idx', 'hour_idx')
+         ->get();
+
+        foreach ([$messageStats, $appStats] as $stats) {
+            foreach ($stats as $stat) {
+                $dayIdx = (int) $stat->day_idx;
+                // DAYOFWEEK: 1=Sunday. Ajustar para que 0=Lun
+                $dayIdx = ($dayIdx === 0) ? 6 : $dayIdx - 1;
+                $hourIdx = (int) $stat->hour_idx;
+                if (isset($heatmap[$dayIdx]['hours'][$hourIdx])) {
+                    $heatmap[$dayIdx]['hours'][$hourIdx] += (int) $stat->cnt;
                 }
             }
         }

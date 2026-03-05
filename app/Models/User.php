@@ -43,6 +43,16 @@ class User extends Authenticatable
         'banned_at',
     ];
 
+    /**
+     * 'role' es alias de 'user_type'. Usar siempre 'user_type' para nueva lógica.
+     * 'role' se mantiene por compatibilidad hacia atrás.
+     * TODO: Deprecar 'role' en siguiente release mayor.
+     */
+    public function getRoleAttribute(): string
+    {
+        return $this->user_type ?? $this->attributes['role'] ?? '';
+    }
+
     protected $hidden = [
         'password',
         'remember_token',
@@ -88,14 +98,23 @@ class User extends Authenticatable
         static::creating(function ($user) {
             static::validateUserData($user, false);
 
+            // Sincronizar role con user_type si no está seteado
+            if (empty($user->role) && !empty($user->user_type)) {
+                $user->attributes['role'] = $user->user_type;
+            }
+
             $user->name     = strip_tags(trim($user->name));
             $user->lastname = strip_tags(trim($user->lastname));
             $user->email    = strtolower(trim($user->email));
         });
 
         static::updating(function ($user) {
-
             static::validateUserData($user, true);
+
+            // Sincronizar role con user_type si se actualiza
+            if ($user->isDirty('user_type')) {
+                $user->attributes['role'] = $user->user_type;
+            }
 
             if ($user->isDirty('name'))     $user->name = strip_tags(trim($user->name));
             if ($user->isDirty('lastname')) $user->lastname = strip_tags(trim($user->lastname));

@@ -10,21 +10,17 @@ class ApplicationController extends Controller
 {
     public function index(Request $r, Project $project)
     {
-        // Auth check: User must own the project (assuming relation 'company') 
-        // OR simply rely on the fact that only companies access this. 
-        // Ideally: abort_unless($project->company_id === $r->user()->id, 403);
-        // But for now, let's just checking user_type or if the Project model has 'company_id' matching user called 'company'
-        
-        // Let's assume the project has a 'company_id' or checking ownership
-        if ($project->company_id !== $r->user()->id && $r->user()->user_type !== 'admin') {
-             // abort(403, 'Unauthorized');
-             // Proceeding for simplicity based on previous context, but adding basic check
-        }
+        // Verificar que el usuario es el dueño del proyecto O un admin
+        abort_unless(
+            $project->company_id === $r->user()->id || $r->user()->user_type === 'admin',
+            403,
+            'No tienes permiso para ver los candidatos de este proyecto.'
+        );
 
         $applications = $project->applications()
             ->with(['developer' => function($query) {
                 $query->select('id', 'name', 'lastname', 'email')
-                      ->withAvg('reviewsReceived as rating', 'rating'); // Alias rating
+                      ->withAvg('reviewsReceived as rating', 'rating');
             }])
             ->latest()
             ->get();

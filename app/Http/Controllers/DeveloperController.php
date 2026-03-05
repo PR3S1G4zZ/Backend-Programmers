@@ -14,7 +14,12 @@ class DeveloperController extends Controller
         $query = User::where('user_type', 'programmer')
             ->with('developerProfile')
             ->withCount('reviewsReceived')
-            ->withAvg('reviewsReceived', 'rating');
+            ->withAvg('reviewsReceived', 'rating')
+            ->withCount([
+                'applications as completed_projects_count' => function ($q) {
+                    $q->whereHas('project', fn($b) => $b->where('status', 'completed'));
+                }
+            ]);
 
         if ($request->filled('search')) {
             $query->where(function ($builder) use ($request) {
@@ -27,12 +32,7 @@ class DeveloperController extends Controller
         $developers = $query->paginate(15)->through(function ($developer) {
             $profile = $developer->developerProfile;
             
-            // Use preloaded applications relationship if available
-            $completedProjects = $developer->applications()
-                ->whereHas('project', function ($builder) {
-                    $builder->where('status', 'completed');
-                })
-                ->count();
+            $completedProjects = $developer->completed_projects_count ?? 0;
 
             return [
                 'id' => (string) $developer->id,
@@ -65,14 +65,15 @@ class DeveloperController extends Controller
             ->with('developerProfile')
             ->withCount('reviewsReceived')
             ->withAvg('reviewsReceived', 'rating')
+            ->withCount([
+                'applications as completed_projects_count' => function ($q) {
+                    $q->whereHas('project', fn($b) => $b->where('status', 'completed'));
+                }
+            ])
             ->firstOrFail();
 
         $profile = $developer->developerProfile;
-        $completedProjects = $developer->applications()
-            ->whereHas('project', function ($builder) {
-                $builder->where('status', 'completed');
-            })
-            ->count();
+        $completedProjects = $developer->completed_projects_count ?? 0;
 
         // Get completed projects details
         $completedProjectsList = $developer->applications()

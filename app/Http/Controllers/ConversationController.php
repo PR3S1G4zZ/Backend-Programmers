@@ -59,43 +59,49 @@ class ConversationController extends Controller
     {
         $userId = $request->user()->id;
 
-        // Fetch conversations where user is initiator OR participant OR in group participants
         $conversations = Conversation::where('initiator_id', $userId)
             ->orWhere('participant_id', $userId)
             ->orWhereHas('participants', function($q) use ($userId) {
                 $q->where('user_id', $userId);
             })
-            ->with(['initiator', 'participant', 'lastMessage', 'participants'])
-            ->get()
-            ->map(function ($conv) use ($userId) {
-                // Check if it's a group conversation
-                if ($conv->is_group) {
-                    return [
-                        'id' => $conv->id,
-                        'name' => $conv->name,
-                        'role' => 'group', // Indicate it's a group conversation
-                        'timestamp' => $conv->lastMessage?->created_at ?? $conv->created_at,
-                        'lastMessage' => $conv->lastMessage?->content ?? 'Inicio de conversación',
-                        'unreadCount' => 0, // Implement unread logic later
-                        'isOnline' => false, // Real-time status later
-                    ];
-                }
-                
-                // Determine the "other" user for direct conversations
-                $otherUser = $conv->initiator_id === $userId ? $conv->participant : $conv->initiator;
-                
-                return [
-                    'id' => $conv->id,
-                    'name' => $otherUser->name . ' ' . $otherUser->lastname,
-                    'role' => $otherUser->role, // developer or company
-                    'timestamp' => $conv->lastMessage?->created_at ?? $conv->created_at,
-                    'lastMessage' => $conv->lastMessage?->content ?? 'Inicio de conversación',
-                    'unreadCount' => 0, // Implement unread logic later
-                    'isOnline' => false, // Real-time status later
-                ];
-            });
+            ->with(['initiator:id,name,lastname,role', 'participant:id,name,lastname,role', 'lastMessage'])
+            ->latest('updated_at')
+            ->paginate(20);
 
-        return response()->json(['data' => $conversations]);
+        $mapped = $conversations->getCollection()->map(function ($conv) use ($userId) {
+            // Check if it's a group conversation
+            if ($conv->is_group) {
+                return [
+                    'id'          => $conv->id,
+                    'name'        => $conv->name,
+                    'role'        => 'group',
+                    'timestamp'   => $conv->lastMessage?->created_at ?? $conv->created_at,
+                    'lastMessage' => $conv->lastMessage?->content ?? 'Inicio de conversación',
+                    'unreadCount' => 0,
+                    'isOnline'    => false,
+                ];
+            }
+
+            $otherUser = $conv->initiator_id === $userId ? $conv->participant : $conv->initiator;
+            return [
+                'id'          => $conv->id,
+                'name'        => $otherUser->name . ' ' . $otherUser->lastname,
+                'role'        => $otherUser->role,
+                'timestamp'   => $conv->lastMessage?->created_at ?? $conv->created_at,
+                'lastMessage' => $conv->lastMessage?->content ?? 'Inicio de conversación',
+                'unreadCount' => 0,
+                'isOnline'    => false,
+            ];
+        });
+
+        return response()->json([
+            'data'       => $mapped,
+            'pagination' => [
+                'current_page' => $conversations->currentPage(),
+                'last_page'    => $conversations->lastPage(),
+                'total'        => $conversations->total(),
+            ]
+        ]);
     }
 
     public function messages(Request $request, Conversation $conversation)
