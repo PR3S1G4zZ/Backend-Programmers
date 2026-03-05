@@ -19,7 +19,22 @@ class MilestoneController extends Controller
         $query = $project->milestones()->with('developer:id,name')->orderBy('order');
 
         if ($user->user_type === 'company' && $request->has('developer_id')) {
-            $query->where('assigned_developer_id', $request->input('developer_id'));
+            $developerId = $request->input('developer_id');
+            // Verify the developer is an accepted applicant on the project
+            $isValidDeveloper = $project->applications()
+                ->where('developer_id', $developerId)
+                ->where('status', 'accepted')
+                ->exists();
+                
+            if ($isValidDeveloper) {
+                $query->where('assigned_developer_id', $developerId);
+            } else {
+                // Return empty result if developer is not valid
+                return response()->json([]);
+            }
+        } elseif ($user->user_type === 'programmer') {
+            // For programmers, only show milestones assigned to them
+            $query->where('assigned_developer_id', $user->id);
         }
 
         $milestones = $query->get();
@@ -59,8 +74,9 @@ class MilestoneController extends Controller
         ]);
         
         $user = $request->user();
-        $isDeveloper = $user->user_type === 'programmer';
-        
+        $isDeveloper = $user->id !== $project->company_id && 
+            $project->applications()->where('developer_id', $user->id)->where('status', 'accepted')->exists();
+            
         if ($isDeveloper) {
             // Un desarrollador solo puede actualizar el estado de sus propios hitos
             if ($milestone->assigned_developer_id !== $user->id) {
