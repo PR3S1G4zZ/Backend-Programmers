@@ -671,7 +671,7 @@ class AdminController extends Controller
     {
         // Optimized: Use single query per model instead of multiple where clauses
         $userStats = User::whereBetween('created_at', [$start, $end])
-            ->selectRaw('COUNT(*) as total, COUNT(CASE WHEN user_type = "programmer" THEN 1 END) as programmers, COUNT(CASE WHEN user_type = "company" THEN 1 END) as companies')
+            ->selectRaw("COUNT(*) as total, COUNT(CASE WHEN user_type = 'programmer' THEN 1 END) as programmers, COUNT(CASE WHEN user_type = 'company' THEN 1 END) as companies")
             ->first();
 
         $projectsCount = Project::whereBetween('created_at', [$start, $end])->count();
