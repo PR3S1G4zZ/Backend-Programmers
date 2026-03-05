@@ -947,11 +947,18 @@ class AdminController extends Controller
             ->whereBetween('created_at', [$prevStart, $prevEnd])
             ->count();
 
-        $avgDuration = Project::where('status', 'completed')
-            ->selectRaw('AVG(TIMESTAMPDIFF(DAY, created_at, updated_at)) as avg_duration')
-            ->first()
-            ->avg_duration;
-        $avgDuration = $avgDuration ? round($avgDuration) : 0;
+        // Calculate average duration in days (database agnostic)
+        $completedProjectsForDuration = Project::where('status', 'completed')->get(['created_at', 'updated_at']);
+        $totalDuration = 0;
+        $count = 0;
+        
+        foreach ($completedProjectsForDuration as $project) {
+            $diff = $project->updated_at->diffInDays($project->created_at);
+            $totalDuration += $diff;
+            $count++;
+        }
+        
+        $avgDuration = $count > 0 ? round($totalDuration / $count) : 0;
 
         $applications = Application::count();
         $accepted = Application::where('status', 'accepted')->count();
