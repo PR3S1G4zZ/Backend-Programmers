@@ -1145,27 +1145,45 @@ class AdminController extends Controller
         $start = Carbon::now()->subDays(30);
         $end = Carbon::now();
 
-        // Query directa SQL en lugar de cargar todos los registros en PHP
-        $messageStats = Message::selectRaw(
-            'DAYOFWEEK(created_at) - 1 as day_idx, HOUR(created_at) as hour_idx, COUNT(*) as cnt'
-        )->whereBetween('created_at', [$start, $end])
-         ->groupBy('day_idx', 'hour_idx')
-         ->get();
+        // Usar Eloquent y colecciones para compatibilidad con PostgreSQL y MySQL
+        $messageStats = Message::whereBetween('created_at', [$start, $end])
+            ->get()
+            ->groupBy(function($message) {
+                return [
+                    'day' => $message->created_at->dayOfWeek, // 0=Lun, 6=Dom (Carbon)
+                    'hour' => $message->created_at->hour
+                ];
+            })
+            ->map(function($messages) {
+                return [
+                    'day' => $messages->first()->created_at->dayOfWeek,
+                    'hour' => $messages->first()->created_at->hour,
+                    'count' => $messages->count()
+                ];
+            });
 
-        $appStats = Application::selectRaw(
-            'DAYOFWEEK(created_at) - 1 as day_idx, HOUR(created_at) as hour_idx, COUNT(*) as cnt'
-        )->whereBetween('created_at', [$start, $end])
-         ->groupBy('day_idx', 'hour_idx')
-         ->get();
+        $appStats = Application::whereBetween('created_at', [$start, $end])
+            ->get()
+            ->groupBy(function($application) {
+                return [
+                    'day' => $application->created_at->dayOfWeek, // 0=Lun, 6=Dom (Carbon)
+                    'hour' => $application->created_at->hour
+                ];
+            })
+            ->map(function($applications) {
+                return [
+                    'day' => $applications->first()->created_at->dayOfWeek,
+                    'hour' => $applications->first()->created_at->hour,
+                    'count' => $applications->count()
+                ];
+            });
 
         foreach ([$messageStats, $appStats] as $stats) {
             foreach ($stats as $stat) {
-                $dayIdx = (int) $stat->day_idx;
-                // DAYOFWEEK: 1=Sunday. Ajustar para que 0=Lun
-                $dayIdx = ($dayIdx === 0) ? 6 : $dayIdx - 1;
-                $hourIdx = (int) $stat->hour_idx;
+                $dayIdx = $stat['day'];
+                $hourIdx = $stat['hour'];
                 if (isset($heatmap[$dayIdx]['hours'][$hourIdx])) {
-                    $heatmap[$dayIdx]['hours'][$hourIdx] += (int) $stat->cnt;
+                    $heatmap[$dayIdx]['hours'][$hourIdx] += $stat['count'];
                 }
             }
         }

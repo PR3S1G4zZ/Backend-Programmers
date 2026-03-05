@@ -230,7 +230,7 @@ class ProjectController extends Controller
 
         $perPage = $request->get('per_page', 20);
 
-        $projects = Project::with(['categories', 'skills'])
+        $projects = Project::with(['company', 'categories', 'skills'])
             ->withCount('applications')
             ->where('company_id', $request->user()->id)
             ->latest()
