@@ -70,12 +70,12 @@ class DashboardController extends Controller
             ->with(['project', 'project.company'])
             ->take(3)
             ->get()
-            ->map(function($app) {
+            ->map(function($app) use ($uid) {
                 return [
                     'id' => $app->project->id,
                     'title' => $app->project->title,
                     'client' => $app->project->company?->name ?? 'Confidencial',
-                    'progress' => 0, // No progress logic yet?
+                    'progress' => $app->project->getDeveloperProgress($uid), // Use new method
                     'deadline' => $app->project->deadline ?? 'N/A',
                     'value' => '€' . number_format($app->project->budget_min ?? 0, 0)
                 ];

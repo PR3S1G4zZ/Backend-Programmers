@@ -217,24 +217,6 @@ class ProjectController extends Controller
             ->latest()
             ->get();
 
-        // Add completed_milestones_count manually using DeveloperMilestone for each project
-        foreach ($projects as $project) {
-            $completedCount = \App\Models\DeveloperMilestone::whereIn('milestone_id', $project->milestones->pluck('id'))
-                ->where('progress_status', 'completed')
-                ->count();
-            // Assign completed milestones to the project to match frontend expectations
-            // Note: Since each developer has their own completions, this number could be higher than total milestones 
-            // if multiple devs complete the same milestone. A better metric is average progress or individual progress.
-            // For now, let's keep it as total completed milestones across all developers for the company dashboard overview.
-            $project->completed_milestones_count = $completedCount;
-            
-            // Re-adjust total milestones count to be milestones * accepted devs for an accurate percentage if needed, 
-            // but for simplicity the frontend just divides completed / total. 
-            // Let's set milestones_count to total expected completions:
-            $acceptedDevsCount = $project->applications()->where('status', 'accepted')->count();
-            $project->milestones_count = $project->milestones->count() * max(1, $acceptedDevsCount); 
-        }
-
         return \App\Http\Resources\ProjectResource::collection($projects);
     }
 

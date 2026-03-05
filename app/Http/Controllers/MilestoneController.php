@@ -142,6 +142,10 @@ class MilestoneController extends Controller
             'progress_status' => 'completed',
         ]);
 
+        // Release funds for the milestone
+        $paymentService = app(\App\Services\PaymentService::class);
+        $paymentService->releaseMilestone($request->user(), $milestone->amount, $project);
+
         return response()->json($milestone);
     }
 

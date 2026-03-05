@@ -222,7 +222,8 @@ class AdminController extends Controller
                     'success' => false,
                     'message' => 'Usuario no encontrado.'
                 ], 404);
-            }
+            } 
+            
 
             // No se puede banear a un admin
             if ($user->user_type === 'admin') {

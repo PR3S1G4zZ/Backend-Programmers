@@ -62,6 +62,7 @@ class MilestoneControllerTest extends TestCase
         $milestone = Milestone::factory()->create([
             'project_id' => $this->project->id,
             'progress_status' => 'in_progress',
+            'assigned_developer_id' => $this->developer->id,
         ]);
 
         $response = $this->postJson("/api/projects/{$this->project->id}/milestones/{$milestone->id}/submit", [
@@ -91,6 +92,7 @@ class MilestoneControllerTest extends TestCase
             'project_id' => $this->project->id,
             'amount' => 1000,
             'progress_status' => 'review',
+            'assigned_developer_id' => $this->developer->id,
         ]);
 
         $response = $this->postJson("/api/projects/{$this->project->id}/milestones/{$milestone->id}/approve");
@@ -143,6 +145,7 @@ class MilestoneControllerTest extends TestCase
             'project_id' => $this->project->id,
             'amount' => 2000,
             'progress_status' => 'review',
+            'assigned_developer_id' => $this->developer->id,
         ]);
 
         $response = $this->postJson("/api/projects/{$this->project->id}/milestones/{$milestone->id}/approve");
