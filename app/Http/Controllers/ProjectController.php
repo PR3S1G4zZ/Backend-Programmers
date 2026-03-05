@@ -212,7 +212,9 @@ class ProjectController extends Controller
         abort_unless($request->user()->user_type === 'company', 403);
 
         $projects = Project::with(['company', 'categories', 'skills', 'applications.developer'])
-            ->withCount(['applications', 'milestones'])
+            ->withCount(['applications', 'milestones', 'milestones as completed_milestones_count' => function ($query) {
+                $query->where('progress_status', 'completed');
+            }])
             ->where('company_id', $request->user()->id)
             ->latest()
             ->get();
