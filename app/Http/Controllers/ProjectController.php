@@ -7,6 +7,7 @@ use App\Models\Project;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\Favorite;
 use App\Models\DeveloperProgress;
+use Illuminate\Support\Facades\Storage;
 
 class ProjectController extends Controller
 {
@@ -245,7 +246,7 @@ class ProjectController extends Controller
         return \App\Http\Resources\ProjectResource::collection($projects);
     }
 
-    public function store(Request $r)
+     public function store(Request $r)
     {
         abort_unless($r->user()->user_type==='company', 403);
         $data = $r->validate([
@@ -269,12 +270,19 @@ class ProjectController extends Controller
           'category_ids.*'=>'integer|exists:project_categories,id',
           'skill_ids'=>'nullable|array',
           'skill_ids.*'=>'integer|exists:skills,id',
+          'image'=>'nullable|image|max:2048',
         ]);
         $data['company_id'] = $r->user()->id;
         if (empty($data['status'])) {
             $data['status'] = 'open';
         }
         $project = Project::create($data);
+        
+        if ($r->hasFile('image')) {
+            $path = $r->file('image')->store('projects', 'public');
+            $project->image_url = $path;
+            $project->save();
+        }
         if (!empty($data['category_ids'])) {
             $project->categories()->sync($data['category_ids']);
         }
@@ -284,7 +292,7 @@ class ProjectController extends Controller
         return new \App\Http\Resources\ProjectResource($project);
     }
 
-    public function update(Request $r, Project $project)
+     public function update(Request $r, Project $project)
     {
         abort_unless($r->user()->user_type==='company' && $project->company_id==$r->user()->id, 403);
         $data = $r->validate([
@@ -308,7 +316,17 @@ class ProjectController extends Controller
             'category_ids.*'=>'integer|exists:project_categories,id',
             'skill_ids'=>'nullable|array',
             'skill_ids.*'=>'integer|exists:skills,id',
+            'image'=>'nullable|image|max:2048',
         ]);
+        
+        if ($r->hasFile('image')) {
+            // Delete old image if exists
+            if ($project->image_url) {
+                Storage::disk('public')->delete($project->image_url);
+            }
+            $path = $r->file('image')->store('projects', 'public');
+            $project->image_url = $path;
+        }
         // Check if completing project
         if (($data['status'] ?? '') === 'completed' && $project->status !== 'completed') {
              // Find accepted application

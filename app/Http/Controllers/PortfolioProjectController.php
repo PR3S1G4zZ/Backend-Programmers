@@ -50,7 +50,7 @@ class PortfolioProjectController extends Controller
 
         if ($request->hasFile('image')) {
             $path = $request->file('image')->store('portfolio', 'public');
-            $entry->image_url = Storage::url($path);
+            $entry->image_url = $path;
         }
 
         $entry->save();
@@ -81,12 +81,11 @@ class PortfolioProjectController extends Controller
         if ($request->hasFile('image')) {
             // Delete old image if exists
             if ($project->image_url) {
-                $oldPath = str_replace('/storage/', '', $project->image_url);
-                Storage::Disk('public')->delete($oldPath);
+                Storage::disk('public')->delete($project->image_url);
             }
 
             $path = $request->file('image')->store('portfolio', 'public');
-            $project->image_url = Storage::url($path);
+            $project->image_url = $path;
         }
 
         $project->fill($data);

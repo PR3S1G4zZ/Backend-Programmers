@@ -41,6 +41,7 @@ class Project extends Model
         'max_applicants',
         'tags',
         'status',
+        'image_url',
     ];
 
     protected $casts = [

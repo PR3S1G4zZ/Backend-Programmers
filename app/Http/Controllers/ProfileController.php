@@ -41,8 +41,8 @@ class ProfileController extends Controller
             if (!empty($userData)) {
                 if ($request->hasFile('profile_picture')) {
                     $path = $request->file('profile_picture')->store('profile_pictures', 'public');
-                    // Generate full URL
-                    $userData['profile_picture'] = url('storage/' . $path);
+                    // Store relative path to storage directory
+                    $userData['profile_picture'] = $path;
                 }
                 $user->update($userData);
             }

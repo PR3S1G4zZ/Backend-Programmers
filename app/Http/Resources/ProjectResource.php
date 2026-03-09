@@ -33,6 +33,7 @@ class ProjectResource extends JsonResource
             'deadline' => $this->deadline,
             'max_applicants' => $this->max_applicants,
             'tags' => $this->tags ?? [],
+            'image_url' => $this->image_url,
             'categories' => $this->whenLoaded('categories', function() {
                 return $this->categories->map(function($category) {
                     return [
