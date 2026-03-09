@@ -50,6 +50,7 @@ class DeveloperController extends Controller
                 'bio' => $profile?->bio ?? '',
                 'lastActive' => $developer->updated_at?->diffForHumans(),
                 'isVerified' => $developer->email_verified_at !== null,
+                'profilePicture' => $developer->profile_picture ?? null,
             ];
         });
 
@@ -119,6 +120,7 @@ class DeveloperController extends Controller
             'lastActive' => $developer->updated_at?->diffForHumans(),
             'isVerified' => $developer->email_verified_at !== null,
             'joinedAt' => $developer->created_at->format('M Y'),
+            'profilePicture' => $developer->profile_picture ?? null,
         ];
 
         return response()->json([
