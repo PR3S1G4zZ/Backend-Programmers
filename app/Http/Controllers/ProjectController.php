@@ -62,6 +62,12 @@ class ProjectController extends Controller
             ->withExists(['applications as has_applied' => function ($query) use ($r) {
                 $query->where('developer_id', $r->user()->id ?? 0);
             }]);
+            
+        // Por defecto, solo mostrar proyectos abiertos para programadores
+        if (! $r->filled('status') && ($r->user()->user_type === 'programmer')) {
+            $q->where('status', 'open');
+        }
+        
         if ($r->filled('status')) {
             $q->where('status', $r->status);
         }
