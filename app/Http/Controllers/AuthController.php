@@ -451,9 +451,15 @@ class AuthController extends Controller
             $user = User::where('email', $email)->first();
 
             if (!$user) {
+                $fullName = $socialUser->getName() ?? $socialUser->getNickname() ?? 'Usuario';
+                $nameParts = explode(' ', $fullName, 2);
+                $firstName = $nameParts[0];
+                $lastName = isset($nameParts[1]) ? $nameParts[1] : '';
+
                 // Nuevo usuario
                 $user = User::create([
-                    'name' => $socialUser->getName() ?? $socialUser->getNickname() ?? 'Usuario',
+                    'name' => $firstName,
+                    'lastname' => $lastName,
                     'email' => $email,
                     $providerIdField => $socialUser->getId(),
                     'avatar' => $socialUser->getAvatar(),
