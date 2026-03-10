@@ -18,10 +18,15 @@ class ProfileController extends Controller
             ? CompanyProfile::firstOrCreate(['user_id' => $user->id])
             : DeveloperProfile::firstOrCreate(['user_id' => $user->id]);
 
+        $userData = $user->only('id', 'name', 'lastname', 'email', 'user_type', 'profile_picture');
+        if ($userData['profile_picture']) {
+            $userData['profile_picture'] = asset('storage/' . $userData['profile_picture']);
+        }
+
         return response()->json([
             'success' => true,
             'data' => [
-                'user' => $user->only('id', 'name', 'lastname', 'email', 'user_type', 'profile_picture'),
+                'user' => $userData,
                 'profile' => $profile,
             ],
         ]);

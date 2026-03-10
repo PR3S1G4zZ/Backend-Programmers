@@ -54,6 +54,13 @@ class DeveloperController extends Controller
             ];
         });
 
+        $developers->getCollection()->transform(function ($developer) {
+            if ($developer['profilePicture']) {
+                $developer['profilePicture'] = asset('storage/' . $developer['profilePicture']);
+            }
+            return $developer;
+        });
+
         return response()->json([
             'success' => true,
             ...$developers->toArray(),
@@ -120,7 +127,7 @@ class DeveloperController extends Controller
             'lastActive' => $developer->updated_at?->diffForHumans(),
             'isVerified' => $developer->email_verified_at !== null,
             'joinedAt' => $developer->created_at->format('M Y'),
-            'profilePicture' => $developer->profile_picture ?? null,
+            'profilePicture' => $developer->profile_picture ? asset('storage/' . $developer->profile_picture) : null,
         ];
 
         return response()->json([
