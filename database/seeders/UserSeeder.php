@@ -197,6 +197,13 @@ class UserSeeder extends Seeder
             $companyUsers->push($user);
         }
 
+         // Obtener lista de fotos de perfil disponibles
+        $profilePictures = scandir(storage_path('app/public/profile_pictures'));
+        $profilePictures = array_filter($profilePictures, function($file) {
+            return preg_match('/\.(jpg|jpeg|png|gif|webp)$/i', $file);
+        });
+        $profilePictures = array_values($profilePictures);
+
         $developerUsers = collect();
         foreach ($developers as $developer) {
             $user = User::create([
@@ -206,6 +213,7 @@ class UserSeeder extends Seeder
                 'password' => $password,
                 'user_type' => 'programmer',
                 'role' => 'programmer',
+                'profile_picture' => 'profile_pictures/' . $profilePictures[array_rand($profilePictures)],
             ]);
 
             $developerLocation = $faker->randomElement($locations);
@@ -389,7 +397,7 @@ class UserSeeder extends Seeder
                     'status' => $milestoneStatus,
                     'progress_status' => $progressStatus,
                     'order' => $i,
-                    'due_date' => $faker->dateTimeBetween($project->created_at, $project->deadline ?? '+2 months'),
+                        'due_date' => $faker->dateTimeBetween($project->created_at, $project->deadline ?? $faker->dateTimeBetween('now', '+3 months')),
                     'deliverables' => $progressStatus === 'completed' ? [$faker->url] : null,
                     'assigned_developer_id' => $assignedDeveloperId,
                 ]);
