@@ -10,7 +10,9 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\ResetPasswordNotification;
+use App\Mail\SocialLinkVerification;
 use Laravel\Socialite\Facades\Socialite;
+use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
@@ -416,60 +418,144 @@ class AuthController extends Controller
      */
     public function handleGoogleCallback()
     {
-        try {
-            $googleUser = Socialite::driver('google')->stateless()->user();
+        return $this->handleSocialCallback('google');
+    }
 
-            $user = User::where('email', $googleUser->getEmail())->first();
+    /**
+     * Redirigir a GitHub
+     */
+    public function redirectToGithub()
+    {
+        return Socialite::driver('github')->stateless()->redirect();
+    }
+
+    /**
+     * Callback de GitHub
+     */
+    public function handleGithubCallback()
+    {
+        return $this->handleSocialCallback('github');
+    }
+
+    /**
+     * Lógica centralizada para manejar callbacks de redes sociales
+     */
+    protected function handleSocialCallback($provider)
+    {
+        try {
+            $socialUser = Socialite::driver($provider)->stateless()->user();
+            $email = $socialUser->getEmail();
+            $providerIdField = $provider . '_id';
+            $frontendUrl = config('app.frontend_url', 'http://localhost:5173');
+
+            $user = User::where('email', $email)->first();
 
             if (!$user) {
-                // Si el usuario no existe, lo creamos (como programador por defecto o pide completar perfil)
-                // Para simplificar, lo creamos como Programador
+                // Nuevo usuario
                 $user = User::create([
-                    'name' => $googleUser->getName(),
-                    'email' => $googleUser->getEmail(),
-                    'google_id' => $googleUser->getId(),
-                    'avatar' => $googleUser->getAvatar(),
-                    'password' => Hash::make(\Illuminate\Support\Str::random(16)), // password aleatoria
-                    'user_type' => 'programmer', // Default
+                    'name' => $socialUser->getName() ?? $socialUser->getNickname() ?? 'Usuario',
+                    'email' => $email,
+                    $providerIdField => $socialUser->getId(),
+                    'avatar' => $socialUser->getAvatar(),
+                    'password' => Hash::make(Str::random(16)),
+                    'user_type' => 'programmer',
                     'role' => 'programmer',
                 ]);
 
-                // Crear perfil vacío
-                 if (class_exists(\App\Models\DeveloperProfile::class)) {
-                      \App\Models\DeveloperProfile::create([
+                if (class_exists(\App\Models\DeveloperProfile::class)) {
+                    \App\Models\DeveloperProfile::create([
                         'user_id' => $user->id,
                         'headline' => 'Programador Web',
                     ]);
                 }
                 
-                // Preferencias por defecto
                 $user->preferences()->create([
                     'theme' => 'dark',
                     'accent_color' => '#00FF85',
                     'language' => 'es'
                 ]);
 
-            } else {
-                // Si existe, actualizamos google_id si no lo tiene
-                if (!$user->google_id) {
-                    $user->google_id = $googleUser->getId();
-                    $user->avatar = $googleUser->getAvatar();
-                    $user->save();
-                }
+                return $this->loginAndRedirect($user, $frontendUrl);
             }
 
-            // Login manual
-            Auth::login($user);
-            $token = $user->createToken('auth_token')->plainTextToken;
+            // El usuario ya existe, comprobamos si ya está vinculado
+            if ($user->{$providerIdField} === $socialUser->getId()) {
+                // Ya estaba vinculado
+                return $this->loginAndRedirect($user, $frontendUrl);
+            }
 
-            // Retornamos un script que envía el token al opener (popup) o redirige con token en URL
-            // Como es SPA, lo mejor es redirigir al frontend con el token en la URL
-            $frontendUrl = config('app.frontend_url', 'http://localhost:5173');
-            
-            return redirect("{$frontendUrl}/auth/callback?token={$token}&user_type={$user->user_type}&name={$user->name}");
+            // No está vinculado, iniciamos flujo de verificación
+            $token = Str::random(40);
+            $user->social_link_token = $token;
+            $user->social_link_provider = $provider;
+            $user->social_link_id = $socialUser->getId();
+            // Actualizamos avatar si no tenía
+            if (!$user->avatar && $socialUser->getAvatar()) {
+                $user->avatar = $socialUser->getAvatar();
+            }
+            $user->save();
+
+            // Enviar email
+            $verifyUrl = "{$frontendUrl}/verify-social-link?token={$token}";
+            Mail::to($user->email)->send(new SocialLinkVerification($verifyUrl));
+
+            // Redirigir a la página indicando que revise su correo
+            return redirect("{$frontendUrl}/auth/callback?status=verification_sent");
 
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Error en autenticación Google: ' . $e->getMessage()], 500);
+            return response()->json(['error' => 'Error en autenticación ' . ucfirst($provider) . ': ' . $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Método auxiliar para loguear y redirigir
+     */
+    protected function loginAndRedirect($user, $frontendUrl)
+    {
+        Auth::login($user);
+        $token = $user->createToken('auth_token')->plainTextToken;
+        return redirect("{$frontendUrl}/auth/callback?token={$token}&user_type={$user->user_type}&name={$user->name}");
+    }
+
+    /**
+     * Endpoint para verificar el token de vinculación
+     */
+    public function verifySocialLink(Request $request)
+    {
+        $request->validate(['token' => 'required|string']);
+
+        $user = User::where('social_link_token', $request->token)->first();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Token inválido o expirado'
+            ], 400);
+        }
+
+        // Vincular
+        $providerField = $user->social_link_provider . '_id';
+        $user->{$providerField} = $user->social_link_id;
+        
+        // Limpiar tokens de verificación
+        $user->social_link_token = null;
+        $user->social_link_provider = null;
+        $user->social_link_id = null;
+        $user->save();
+
+        Auth::login($user);
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cuenta vinculada exitosamente',
+            'token' => $token,
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'user_type' => $user->user_type,
+            ]
+        ]);
     }
 }

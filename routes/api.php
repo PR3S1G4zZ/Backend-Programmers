@@ -34,6 +34,12 @@ Route::prefix('auth')->group(function () {
     Route::get('/google', [AuthController::class, 'redirectToGoogle']);
     Route::get('/google/callback', [AuthController::class, 'handleGoogleCallback']);
 
+    // GitHub Auth
+    Route::get('/github', [AuthController::class, 'redirectToGithub']);
+    Route::get('/github/callback', [AuthController::class, 'handleGithubCallback']);
+
+    // Verificación de vinculación de cuenta social
+    Route::get('/verify-social-link', [AuthController::class, 'verifySocialLink']);
     // recuperar contraseña
     Route::post('/forgot-password', [AuthController::class, 'sendResetLink'])->middleware('throttle:5,1');
     Route::post('/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
