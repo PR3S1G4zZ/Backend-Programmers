@@ -20,7 +20,10 @@ class PaymentMethodController extends Controller
             'is_default' => 'boolean'
         ]);
 
-        if ($data['is_default'] ?? false) {
+        // Convertir a booleano explícitamente para evitar errores de tipo
+        $data['is_default'] = filter_var($data['is_default'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        if ($data['is_default']) {
             $r->user()->paymentMethods()->update(['is_default' => false]);
         }
 
@@ -48,6 +51,11 @@ class PaymentMethodController extends Controller
             'details' => 'string',
             'is_default' => 'boolean'
         ]);
+
+        // Convertir a booleano explícitamente para evitar errores de tipo
+        if (array_key_exists('is_default', $data)) {
+            $data['is_default'] = filter_var($data['is_default'], FILTER_VALIDATE_BOOLEAN);
+        }
 
         if (($data['is_default'] ?? false)) {
             $r->user()->paymentMethods()->where('id', '!=', $paymentMethod->id)->update(['is_default' => false]);
