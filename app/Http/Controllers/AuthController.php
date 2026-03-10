@@ -446,7 +446,11 @@ class AuthController extends Controller
             $socialUser = Socialite::driver($provider)->stateless()->user();
             $email = $socialUser->getEmail();
             $providerIdField = $provider . '_id';
-            $frontendUrl = config('app.frontend_url', 'http://localhost:5173');
+            
+            $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:5173'), '/');
+            if (!str_starts_with($frontendUrl, 'http://') && !str_starts_with($frontendUrl, 'https://')) {
+                $frontendUrl = 'https://' . $frontendUrl;
+            }
 
             $user = User::where('email', $email)->first();
 
