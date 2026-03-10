@@ -95,7 +95,7 @@ return [
     'prefix' => '',
     'prefix_indexes' => true,
     'search_path' => 'public',
-    'sslmode' => 'prefer',
+            'sslmode' => 'prefer',
     'prepared_statements' => false, // Mantenlo por si acaso
     // AGREGA ESTO:
     'options' => [

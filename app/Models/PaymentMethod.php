@@ -16,10 +16,12 @@ class PaymentMethod extends Model
         'is_default',
     ];
 
-    protected $casts = [
-        'is_default' => 'boolean',
-        // 'details' => 'array', // Removing this to keep it as string for frontend to parse
-    ];
+    protected function casts(): array
+    {
+        return [
+            'is_default' => 'boolean',
+        ];
+    }
 
     public function user()
     {
