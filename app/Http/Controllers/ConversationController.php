@@ -162,7 +162,7 @@ class ConversationController extends Controller
             $file = $request->file('file');
             $path = $file->store('chat-files', 'public');
             
-            $messageData['type'] = str_starts_with($file->getMime(), 'image/') ? 'image' : 'file';
+            $messageData['type'] = str_starts_with($file->getMimeType(), 'image/') ? 'image' : 'file';
             $messageData['file_path'] = $path;
             $messageData['file_name'] = $file->getClientOriginalName();
             $messageData['file_size'] = $file->getSize();

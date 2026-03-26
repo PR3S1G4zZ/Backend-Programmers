@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\{Project, Application};
+use App\Models\{Project, Application, Message};
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller

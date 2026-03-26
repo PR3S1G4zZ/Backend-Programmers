@@ -29,14 +29,6 @@ Route::prefix('auth')->group(function () {
     // Registro y Login
     Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:6,1');
     Route::post('/login',    [AuthController::class, 'login'])->middleware('throttle:6,1');
-    
-    // Google Auth
-    Route::get('/google', [AuthController::class, 'redirectToGoogle']);
-    Route::get('/google/callback', [AuthController::class, 'handleGoogleCallback']);
-
-    // GitHub Auth
-    Route::get('/github', [AuthController::class, 'redirectToGithub']);
-    Route::get('/github/callback', [AuthController::class, 'handleGithubCallback']);
 
     // Verificación de vinculación de cuenta social
     Route::get('/verify-social-link', [AuthController::class, 'verifySocialLink']);
