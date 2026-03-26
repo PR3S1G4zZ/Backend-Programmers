@@ -123,6 +123,9 @@ class ConversationController extends Controller
                     'timestamp' => $msg->created_at,
                     'type' => $msg->type,
                     'isRead' => $msg->is_read,
+                    'fileName' => $msg->file_name,
+                    'fileSize' => $msg->file_size ? $this->formatFileSize($msg->file_size) : null,
+                    'fileUrl' => $msg->file_path ? url('storage/' . $msg->file_path) : null,
                 ];
             });
 
@@ -136,23 +139,59 @@ class ConversationController extends Controller
             abort(403, 'Unauthorized');
         }
 
-        $request->validate([
-            'content' => 'required|string',
-        ]);
+        $hasFile = $request->hasFile('file');
+        
+        if ($hasFile) {
+            $request->validate([
+                'file' => 'required|file|max:10240|mimes:jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx,zip,rar,txt,csv',
+                'content' => 'nullable|string',
+            ]);
+        } else {
+            $request->validate([
+                'content' => 'required|string',
+            ]);
+        }
 
-        $message = $conversation->messages()->create([
+        $messageData = [
             'sender_id' => $userId,
-            'content' => $request->content,
-            'type' => 'text', // Handle file upload later if needed
-        ]);
+            'content' => $request->content ?? '',
+            'type' => 'text',
+        ];
+
+        if ($hasFile) {
+            $file = $request->file('file');
+            $path = $file->store('chat-files', 'public');
+            
+            $messageData['type'] = str_starts_with($file->getMime(), 'image/') ? 'image' : 'file';
+            $messageData['file_path'] = $path;
+            $messageData['file_name'] = $file->getClientOriginalName();
+            $messageData['file_size'] = $file->getSize();
+            $messageData['file_mime'] = $file->getMimeType();
+            
+            if (empty($messageData['content'])) {
+                $messageData['content'] = $file->getClientOriginalName();
+            }
+        }
+
+        $message = $conversation->messages()->create($messageData);
 
         return response()->json(['data' => [
             'id' => $message->id,
-            'senderId' => (string)$message->sender_id,
+            'senderId' => (string) $message->sender_id,
             'content' => $message->content,
             'timestamp' => $message->created_at,
             'type' => $message->type,
             'isRead' => $message->is_read,
+            'fileName' => $message->file_name,
+            'fileSize' => $message->file_size ? $this->formatFileSize($message->file_size) : null,
+            'fileUrl' => $message->file_path ? url('storage/' . $message->file_path) : null,
         ]], 201);
+    }
+
+    private function formatFileSize(int $bytes): string
+    {
+        if ($bytes < 1024) return $bytes . ' B';
+        if ($bytes < 1048576) return round($bytes / 1024, 1) . ' KB';
+        return round($bytes / 1048576, 1) . ' MB';
     }
 }

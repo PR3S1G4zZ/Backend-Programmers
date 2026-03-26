@@ -41,6 +41,12 @@ class User extends Authenticatable
         'role',
         'profile_picture',
         'banned_at',
+        'google_id',
+        'github_id',
+        'avatar',
+        'social_link_token',
+        'social_link_provider',
+        'social_link_id',
     ];
 
     /**
@@ -145,8 +151,8 @@ class User extends Authenticatable
             'user_type' => 'required|in:programmer,company,admin',
         ];
 
-        // Validar contraseña SOLO si es creación o si está siendo cambiada
-        if (!$isUpdate || $user->originalPassword !== null) {
+        // Validar contraseña SOLO si el password original no es null (no es pre-hasheado)
+        if ($user->originalPassword !== null) {
 
             $rules['password'] = [
                 'required', 'string', 'regex:/^\S+$/',

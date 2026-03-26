@@ -95,6 +95,12 @@ class ReviewController extends Controller
             'post_delivery_support_rating' => $request->post_delivery_support_rating ?? 5,
         ]);
 
+        // Notificar al desarrollador
+        $developer = \App\Models\User::find($request->developer_id);
+        if ($developer) {
+            $developer->notify(new \App\Notifications\ReviewReceivedNotification($review, $project, $user));
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Review creada exitosamente',

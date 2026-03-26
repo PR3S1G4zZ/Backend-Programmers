@@ -111,6 +111,9 @@ class AuthController extends Controller
 
             $token = $user->createToken('auth_token')->plainTextToken;
 
+            // Enviar correo de verificación (en background, no bloquea el registro)
+            $this->createAndSendVerificationToken($user);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Usuario registrado exitosamente',
@@ -567,5 +570,106 @@ class AuthController extends Controller
                 'user_type' => $user->user_type,
             ]
         ]);
+    }
+
+    /**
+     * Enviar correo de verificación de email
+     */
+    public function sendVerificationEmail(Request $request)
+    {
+        $user = $request->user();
+
+        if ($user->email_verified_at) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Tu correo ya está verificado.'
+            ]);
+        }
+
+        $this->createAndSendVerificationToken($user);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Correo de verificación enviado. Revisa tu bandeja de entrada.'
+        ]);
+    }
+
+    /**
+     * Verificar email con token
+     */
+    public function verifyEmail(Request $request)
+    {
+        $request->validate([
+            'token' => 'required|string',
+        ]);
+
+        $tokenRecord = \DB::table('email_verification_tokens')
+            ->where('token', $request->token)
+            ->where('expires_at', '>', now())
+            ->first();
+
+        if (!$tokenRecord) {
+            return response()->json([
+                'success' => false,
+                'message' => 'El enlace de verificación es inválido o ha expirado.'
+            ], 400);
+        }
+
+        $user = User::find($tokenRecord->user_id);
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Usuario no encontrado.'
+            ], 404);
+        }
+
+        // Marcar email como verificado
+        $user->email_verified_at = now();
+        $user->save();
+
+        // Eliminar token usado
+        \DB::table('email_verification_tokens')->where('token', $request->token)->delete();
+
+        // Generar token de sesión para auto-login
+        $sessionToken = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'success' => true,
+            'message' => '¡Correo verificado exitosamente!',
+            'token' => $sessionToken,
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'user_type' => $user->user_type,
+            ]
+        ]);
+    }
+
+    /**
+     * Crear token de verificación y enviar correo
+     */
+    private function createAndSendVerificationToken(User $user): void
+    {
+        // Eliminar tokens anteriores
+        \DB::table('email_verification_tokens')->where('user_id', $user->id)->delete();
+
+        // Crear nuevo token
+        $token = Str::random(64);
+        \DB::table('email_verification_tokens')->insert([
+            'user_id' => $user->id,
+            'token' => $token,
+            'expires_at' => now()->addHours(24),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Enviar correo
+        try {
+            \Mail::to($user->email)->send(new \App\Mail\EmailVerificationMail($token, $user->name));
+        } catch (\Exception $e) {
+            \Log::error('Error enviando correo de verificación: ' . $e->getMessage());
+        }
     }
 }

@@ -40,6 +40,10 @@ Route::prefix('auth')->group(function () {
 
     // Verificación de vinculación de cuenta social
     Route::get('/verify-social-link', [AuthController::class, 'verifySocialLink']);
+
+    // Verificación de email
+    Route::post('/verify-email', [AuthController::class, 'verifyEmail']);
+
     // recuperar contraseña
     Route::post('/forgot-password', [AuthController::class, 'sendResetLink'])->middleware('throttle:5,1');
     Route::post('/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
@@ -49,6 +53,7 @@ Route::prefix('auth')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::get('/me',      [AuthController::class, 'me']);
         Route::post('/change-password', [AuthController::class, 'changePassword']);
+        Route::post('/send-verification-email', [AuthController::class, 'sendVerificationEmail']);
     });
 });
 
@@ -63,24 +68,24 @@ Route::middleware('auth:sanctum')->group(function () {
 
      // Projects (solo empresas)
      Route::get('/projects', [ProjectController::class, 'index']);
-     Route::post('/projects', [ProjectController::class, 'store']);
+     Route::post('/projects', [ProjectController::class, 'store'])->middleware('throttle:10,1');
      Route::get('/projects/{project}', [ProjectController::class, 'show']);
-     Route::put('/projects/{project}', [ProjectController::class, 'update']);
-     Route::post('/projects/{project}/fund', [ProjectController::class, 'fund']);
-     Route::post('/projects/{project}/start', [ProjectController::class, 'start']); // Iniciar proyecto
-     Route::get('/projects/{project}/developer-progress', [ProjectController::class, 'getDeveloperProgress']); // Obtener progreso de desarrolladores
-     Route::put('/projects/{project}/developer-progress/{developerId}', [ProjectController::class, 'updateDeveloperProgress']); // Actualizar progreso de desarrollador
-     Route::post('/projects/{project}/complete', [ProjectController::class, 'complete']); // Finalizar proyecto y pagar
-     Route::delete('/projects/{project}', [ProjectController::class, 'destroy']);
+     Route::put('/projects/{project}', [ProjectController::class, 'update'])->middleware('throttle:20,1');
+     Route::post('/projects/{project}/fund', [ProjectController::class, 'fund'])->middleware('throttle:5,1');
+     Route::post('/projects/{project}/start', [ProjectController::class, 'start'])->middleware('throttle:10,1');
+     Route::get('/projects/{project}/developer-progress', [ProjectController::class, 'getDeveloperProgress']);
+     Route::put('/projects/{project}/developer-progress/{developerId}', [ProjectController::class, 'updateDeveloperProgress'])->middleware('throttle:30,1');
+     Route::post('/projects/{project}/complete', [ProjectController::class, 'complete'])->middleware('throttle:5,1');
+     Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])->middleware('throttle:10,1');
 
     // Aplicaciones (programadores)
-    Route::post('/projects/{project}/apply', [ApplicationController::class, 'apply']);
+    Route::post('/projects/{project}/apply', [ApplicationController::class, 'apply'])->middleware('throttle:10,1');
     Route::get('/applications/mine', [ApplicationController::class, 'myApplications']);
     
     // Gestión de Candidatos (Empresa)
-    Route::get('/projects/{project}/applications', [ApplicationController::class, 'index']); // Listar candidatos
-    Route::post('/applications/{application}/accept', [ApplicationController::class, 'accept']); // Aceptar candidato
-    Route::post('/applications/{application}/reject', [ApplicationController::class, 'reject']); // Rechazar candidato
+    Route::get('/projects/{project}/applications', [ApplicationController::class, 'index']);
+    Route::post('/applications/{application}/accept', [ApplicationController::class, 'accept'])->middleware('throttle:10,1');
+    Route::post('/applications/{application}/reject', [ApplicationController::class, 'reject'])->middleware('throttle:10,1');
 
     // Wallet
     Route::get('/wallet', [\App\Http\Controllers\WalletController::class, 'show']);
@@ -111,17 +116,17 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Conversations
     Route::get('/conversations', [ConversationController::class, 'index']);
-    Route::post('/conversations', [ConversationController::class, 'store']); // Create conversation
+    Route::post('/conversations', [ConversationController::class, 'store'])->middleware('throttle:10,1');
     Route::get('/conversations/{conversation}/messages', [ConversationController::class, 'messages']);
-    Route::post('/conversations/{conversation}/messages', [ConversationController::class, 'storeMessage']);
+    Route::post('/conversations/{conversation}/messages', [ConversationController::class, 'storeMessage'])->middleware('throttle:30,1');
 
     // Favorites
     Route::get('/favorites', [FavoriteController::class, 'index']);
-    Route::post('/favorites', [FavoriteController::class, 'store']); // Toggle favorite
+    Route::post('/favorites', [FavoriteController::class, 'store'])->middleware('throttle:20,1');
 
     // Reviews
     Route::get('/reviews', [ReviewController::class, 'index']);
-    Route::post('/reviews', [ReviewController::class, 'store']);
+    Route::post('/reviews', [ReviewController::class, 'store'])->middleware('throttle:5,1');
     Route::get('/reviews/{id}', [ReviewController::class, 'show']);
     Route::get('/projects/{project}/reviews', [ReviewController::class, 'projectReviews']);
 
@@ -187,5 +192,13 @@ Route::middleware('auth:sanctum')->group(function () {
     // --- Settings & Preferences ---
     Route::get('/preferences', [\App\Http\Controllers\SettingsController::class, 'getPreferences']);
     Route::put('/preferences', [\App\Http\Controllers\SettingsController::class, 'updatePreferences']);
+
+    // Notifications
+    Route::get('/notifications', [\App\Http\Controllers\NotificationController::class, 'index']);
+    Route::get('/notifications/unread-count', [\App\Http\Controllers\NotificationController::class, 'unreadCount']);
+    Route::post('/notifications/{id}/read', [\App\Http\Controllers\NotificationController::class, 'markAsRead']);
+    Route::post('/notifications/read-all', [\App\Http\Controllers\NotificationController::class, 'markAllAsRead']);
+    Route::delete('/notifications/{id}', [\App\Http\Controllers\NotificationController::class, 'destroy']);
+    Route::delete('/notifications/clear-read', [\App\Http\Controllers\NotificationController::class, 'clearRead']);
     
 });

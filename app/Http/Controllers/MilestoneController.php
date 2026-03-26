@@ -127,6 +127,9 @@ class MilestoneController extends Controller
             'progress_status' => 'review'
         ]);
 
+        // Notificar a la empresa
+        $project->company->notify(new \App\Notifications\MilestoneSubmittedNotification($milestone, $project, $request->user()));
+
         return response()->json($milestone);
     }
 
@@ -141,6 +144,11 @@ class MilestoneController extends Controller
         $milestone->update([
             'progress_status' => 'completed',
         ]);
+
+        // Notificar al desarrollador asignado
+        if ($milestone->assignedDeveloper) {
+            $milestone->assignedDeveloper->notify(new \App\Notifications\MilestoneApprovedNotification($milestone, $project));
+        }
 
         // Release funds for the milestone
         $paymentService = app(\App\Services\PaymentService::class);

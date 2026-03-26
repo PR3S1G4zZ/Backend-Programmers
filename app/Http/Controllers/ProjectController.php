@@ -475,6 +475,13 @@ class ProjectController extends Controller
 
                 // 3. Marcar el proyecto como completado
                 $project->update(['status' => 'completed']);
+
+                // Notificar a todos los desarrolladores aceptados
+                foreach ($acceptedApps as $app) {
+                    if ($app->developer) {
+                        $app->developer->notify(new \App\Notifications\ProjectCompletedNotification($project));
+                    }
+                }
             });
 
             return response()->json([

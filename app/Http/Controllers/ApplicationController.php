@@ -44,6 +44,10 @@ class ApplicationController extends Controller
           'cover_letter'=>$data['cover_letter'] ?? null,
           'status' => 'pending'
         ]);
+
+        // Notificar a la empresa
+        $project->company->notify(new \App\Notifications\NewApplicationNotification($project, $r->user()));
+
         return new \App\Http\Resources\ApplicationResource($app->load('project'));
     }
 
@@ -87,7 +91,10 @@ class ApplicationController extends Controller
 
                 // 1. Update Application Status
                 $application->update(['status' => 'accepted']);
-                
+
+                // Notificar al desarrollador
+                $application->developer->notify(new \App\Notifications\ApplicationAcceptedNotification($project, $r->user()));
+
                 // 2. Reject other pending applications for this project (optional but common)
                 // $project->applications()->where('id', '!=', $application->id)->update(['status' => 'rejected']);
     

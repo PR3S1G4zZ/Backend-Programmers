@@ -37,4 +37,9 @@ class Milestone extends Model
     {
         return $this->belongsTo(User::class, 'assigned_developer_id');
     }
+
+    public function assignedDeveloper()
+    {
+        return $this->belongsTo(User::class, 'assigned_developer_id');
+    }
 }
