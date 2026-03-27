@@ -10,7 +10,11 @@ class DisableSessionForOAuth
 {
     public function handle(Request $request, Closure $next): Response
     {
-        $request->attributes->set('_disable_session', true);
+        $path = $request->path();
+
+        if (str_starts_with($path, 'auth/google') || str_starts_with($path, 'auth/github')) {
+            config(['session.driver' => 'array']);
+        }
 
         return $next($request);
     }
