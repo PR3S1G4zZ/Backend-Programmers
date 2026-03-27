@@ -446,24 +446,30 @@ class AuthController extends Controller
     protected function handleSocialCallback($provider)
     {
         try {
+            \Log::info("Social callback started for provider: {$provider}");
+
             $socialUser = Socialite::driver($provider)->stateless()->user();
             $email = $socialUser->getEmail();
             $providerIdField = $provider . '_id';
-            
+
+            \Log::info("Social user retrieved", ['email' => $email, 'provider' => $provider, 'provider_id' => $socialUser->getId()]);
+
             $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:5173'), '/');
             if (!str_starts_with($frontendUrl, 'http://') && !str_starts_with($frontendUrl, 'https://')) {
                 $frontendUrl = 'https://' . $frontendUrl;
             }
 
+            \Log::info("Frontend URL resolved: {$frontendUrl}");
+
             $user = User::where('email', $email)->first();
 
             if (!$user) {
+                \Log::info("Creating new user from social login", ['email' => $email]);
                 $fullName = $socialUser->getName() ?? $socialUser->getNickname() ?? 'Usuario';
                 $nameParts = explode(' ', $fullName, 2);
                 $firstName = $nameParts[0];
                 $lastName = isset($nameParts[1]) ? $nameParts[1] : '';
 
-                // Nuevo usuario
                 $user = User::create([
                     'name' => $firstName,
                     'lastname' => $lastName,
@@ -475,48 +481,58 @@ class AuthController extends Controller
                     'role' => 'programmer',
                 ]);
 
+                \Log::info("User created", ['user_id' => $user->id]);
+
                 if (class_exists(\App\Models\DeveloperProfile::class)) {
                     \App\Models\DeveloperProfile::create([
                         'user_id' => $user->id,
                         'headline' => 'Programador Web',
                     ]);
+                    \Log::info("DeveloperProfile created");
                 }
-                
+
                 $user->preferences()->create([
                     'theme' => 'dark',
                     'accent_color' => '#00FF85',
                     'language' => 'es'
                 ]);
+                \Log::info("Preferences created");
 
                 return $this->loginAndRedirect($user, $frontendUrl);
             }
 
-            // El usuario ya existe, comprobamos si ya está vinculado
+            \Log::info("Existing user found", ['user_id' => $user->id, 'provider_field' => $providerIdField]);
+
             if ($user->{$providerIdField} === $socialUser->getId()) {
-                // Ya estaba vinculado
+                \Log::info("User already linked, logging in");
                 return $this->loginAndRedirect($user, $frontendUrl);
             }
 
-            // No está vinculado, iniciamos flujo de verificación
+            \Log::info("Starting social link verification flow");
             $token = Str::random(40);
             $user->social_link_token = $token;
             $user->social_link_provider = $provider;
             $user->social_link_id = $socialUser->getId();
-            // Actualizamos avatar si no tenía
             if (!$user->avatar && $socialUser->getAvatar()) {
                 $user->avatar = $socialUser->getAvatar();
             }
             $user->save();
 
-            // Enviar email
             $verifyUrl = "{$frontendUrl}/verify-social-link?token={$token}";
             Mail::to($user->email)->send(new SocialLinkVerification($verifyUrl));
 
-            // Redirigir a la página indicando que revise su correo
             return redirect("{$frontendUrl}/auth/callback?status=verification_sent");
 
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Error en autenticación ' . ucfirst($provider) . ': ' . $e->getMessage()], 500);
+            \Log::error("Social auth error for {$provider}: " . $e->getMessage(), [
+                'exception' => get_class($e),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            $frontendUrl = config('app.frontend_url', 'http://localhost:5173');
+            return redirect("{$frontendUrl}/auth/callback?error=social_auth_failed&message=" . urlencode($e->getMessage()));
         }
     }
 
