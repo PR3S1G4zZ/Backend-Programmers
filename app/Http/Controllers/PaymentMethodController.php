@@ -25,7 +25,9 @@ class PaymentMethodController extends Controller
         $data['is_default'] = (bool) ($data['is_default'] ?? false);
 
         if ($data['is_default']) {
-            $r->user()->paymentMethods()->update(['is_default' => false]);
+            $r->user()->paymentMethods()->where('is_default', true)->each(function ($method) {
+                $method->update(['is_default' => false]);
+            });
         }
 
         $method = $r->user()->paymentMethods()->create($data);
@@ -60,7 +62,9 @@ class PaymentMethodController extends Controller
         }
 
         if (($data['is_default'] ?? false)) {
-            $r->user()->paymentMethods()->where('id', '!=', $paymentMethod->id)->update(['is_default' => false]);
+            $r->user()->paymentMethods()->where('id', '!=', $paymentMethod->id)->where('is_default', true)->each(function ($method) {
+                $method->update(['is_default' => false]);
+            });
         }
 
         $paymentMethod->update($data);
