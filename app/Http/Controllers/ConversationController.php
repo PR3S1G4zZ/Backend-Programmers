@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\Conversation;
 use App\Models\Message;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class ConversationController extends Controller
 {
@@ -125,7 +126,7 @@ class ConversationController extends Controller
                     'isRead' => $msg->is_read,
                     'fileName' => $msg->file_name,
                     'fileSize' => $msg->file_size ? $this->formatFileSize($msg->file_size) : null,
-                    'fileUrl' => $msg->file_path ? url('storage/' . $msg->file_path) : null,
+                    'fileUrl' => $msg->file_path ? $this->fileUrl($msg->file_path) : null,
                 ];
             });
 
@@ -160,8 +161,8 @@ class ConversationController extends Controller
 
         if ($hasFile) {
             $file = $request->file('file');
-            $path = $file->store('chat-files', 'public');
-            
+            $path = $file->store('chat-files', 'supabase');
+
             $messageData['type'] = str_starts_with($file->getMimeType(), 'image/') ? 'image' : 'file';
             $messageData['file_path'] = $path;
             $messageData['file_name'] = $file->getClientOriginalName();
@@ -184,8 +185,15 @@ class ConversationController extends Controller
             'isRead' => $message->is_read,
             'fileName' => $message->file_name,
             'fileSize' => $message->file_size ? $this->formatFileSize($message->file_size) : null,
-            'fileUrl' => $message->file_path ? url('storage/' . $message->file_path) : null,
+            'fileUrl' => $message->file_path ? $this->fileUrl($message->file_path) : null,
         ]], 201);
+    }
+
+    private function fileUrl(string $path): string
+    {
+        $supabaseUrl = rtrim(config('filesystems.disks.supabase.endpoint', ''), '/s3');
+        $bucket = config('filesystems.disks.supabase.bucket', 'chat-files');
+        return $supabaseUrl . '/object/public/' . $bucket . '/' . $path;
     }
 
     private function formatFileSize(int $bytes): string
