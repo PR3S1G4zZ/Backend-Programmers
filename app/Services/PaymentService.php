@@ -139,15 +139,15 @@ class PaymentService
             throw new \Exception("Fondos insuficientes en la cartera de la empresa para pagar al desarrollador.");
         }
 
-        // Apply Platform Commission
-        $platformCommissionRate = env('PLATFORM_COMMISSION_RATE', 10) / 100;
-        $commission = $amount * $platformCommissionRate;
+        // Apply Platform Commission using unified rate
+        $rate = $this->getCommissionRate($amount);
+        $commission = $amount * $rate;
         $netAmount = $amount - $commission;
         
         $devWallet = $this->getWallet($developer);
         $adminWallet = $this->getAdminWallet();
 
-        \Illuminate\Support\Facades\DB::transaction(function () use ($company, $companyWallet, $devWallet, $adminWallet, $amount, $netAmount, $commission, $reference, $developer) {
+        DB::transaction(function () use ($companyWallet, $devWallet, $adminWallet, $amount, $netAmount, $commission, $reference, $developer) {
              // Deduct from Company
             $companyWallet->decrement('balance', $amount);
             $this->createTransaction($companyWallet, -$amount, 'payment_sent', "Pago por Proyecto #{$reference->id} a {$developer->name}", $reference);
@@ -193,28 +193,25 @@ class PaymentService
     }
 
     /**
-     * Crear un registro de comisión global del proyecto cuando se financia
-     * Guarda el monto retenido (50%). La comisión se calcula cuando se libera el proyecto a todos los devs.
-     * @throws \Exception Si no hay desarrollador asignado al proyecto
+     * Crear un registro de comisión del proyecto cuando se financia.
+     * Guarda el monto total, el monto retenido (50%) y la tasa de comisión.
+     * No requiere developer asignado - se puede actualizar cuando se asigne.
      */
     public function createCommissionRecord(User $company, $project, float $totalAmount)
     {
-        // Obtener el developer asignado
         $acceptedApp = $project->applications()->where('status', 'accepted')->first();
-        
-        if (!$acceptedApp) {
-            throw new \Exception("No se puede cobrar sin un desarrollador asignado.");
-        }
+        $escrowAmount = $totalAmount * 0.5;
+        $rate = $this->getCommissionRate($totalAmount);
 
-        // Just use the first app as the placeholder or make it null if multiple devs but schema expects user_id
-        // (If multiple devs is standard, you should drop developer_id constraint or link to apps, 
-        //  but using the project company and one dev is fine for general project commissions mapping).
-        return \App\Models\PlatformCommission::create([
+        return PlatformCommission::create([
             'project_id' => $project->id,
-            'user_id' => $acceptedApp->developer_id, // Primary dev roughly 
-            'amount' => $totalAmount,
-            'commission_rate' => env('PLATFORM_COMMISSION_RATE', 10),
-            'calculated_commission' => $totalAmount * (env('PLATFORM_COMMISSION_RATE', 10) / 100),
+            'company_id' => $company->id,
+            'developer_id' => $acceptedApp?->developer_id,
+            'total_amount' => $totalAmount,
+            'held_amount' => $escrowAmount,
+            'commission_rate' => $rate * 100,
+            'commission_amount' => 0,
+            'net_amount' => 0,
             'status' => 'pending'
         ]);
     }
@@ -249,6 +246,46 @@ class PaymentService
         }
         
         return $commission;
+    }
+
+    /**
+     * Cobrar la tarifa de plataforma al publicar un proyecto.
+     * Transfiere el monto de la wallet de la empresa a la wallet del admin.
+     */
+    public function chargePlatformFee(User $company, float $fee, $project)
+    {
+        if ($fee <= 0) {
+            return;
+        }
+
+        $wallet = $this->getWallet($company);
+        $adminWallet = $this->getAdminWallet();
+
+        DB::transaction(function () use ($wallet, $adminWallet, $fee, $project) {
+            $wallet->decrement('balance', $fee);
+            $this->createTransaction($wallet, -$fee, 'platform_fee', "Tarifa de plataforma Proyecto #{$project->id}", $project);
+
+            if ($adminWallet) {
+                $adminWallet->increment('balance', $fee);
+                $this->createTransaction($adminWallet, $fee, 'commission', "Tarifa de plataforma Proyecto #{$project->id}", $project);
+            }
+        });
+    }
+
+    /**
+     * Verificar si la empresa tiene saldo suficiente para el depósito + tarifa.
+     * @throws Exception Si el saldo es insuficiente
+     */
+    public function checkSufficientBalance(User $company, float $escrowAmount, float $platformFee)
+    {
+        $wallet = $this->getWallet($company);
+        $totalRequired = $escrowAmount + $platformFee;
+
+        if ($wallet->balance < $totalRequired) {
+            throw new Exception(
+                "Saldo insuficiente. Requerido: \${$totalRequired} (Depósito: \${$escrowAmount}, Tarifa: \${$platformFee}), Disponible: \${$wallet->balance}"
+            );
+        }
     }
 
     /**

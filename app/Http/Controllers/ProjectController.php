@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\Favorite;
 use App\Models\DeveloperProgress;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
 
 class ProjectController extends Controller
 {
@@ -18,23 +19,43 @@ class ProjectController extends Controller
             abort(403);
         }
 
-        // Validate amount (50% of budget_min or full amount?)
-        // User request: "Anticipo del 50%"
-        // Usar budget_max si está disponible, sino budget_min
         $totalBudget = $project->budget_max ?? $project->budget_min ?? 0;
-        $amount = $totalBudget * 0.5;
+        if ($totalBudget <= 0) {
+            return response()->json(['message' => 'El presupuesto del proyecto debe ser mayor a 0.'], 400);
+        }
+
+        $escrowAmount = $totalBudget * 0.5;
 
         try {
             $paymentService = app(\App\Services\PaymentService::class);
-            $paymentService->fundProject($r->user(), $amount, $project);
-            
-            // Crear registro de comisión SOLO si no existe uno previamente
+
+            // Calcular tarifa de plataforma (20% si < $500, 15% si >= $500)
+            $platformFeeRate = $paymentService->getCommissionRate($totalBudget);
+            $platformFee = $totalBudget * $platformFeeRate;
+
+            // Verificar saldo suficiente para depósito + tarifa
+            $paymentService->checkSufficientBalance($r->user(), $escrowAmount, $platformFee);
+
+            // 1. Cobrar tarifa de plataforma al admin
+            $paymentService->chargePlatformFee($r->user(), $platformFee, $project);
+
+            // 2. Depositar 50% en garantía (escrow)
+            $paymentService->fundProject($r->user(), $escrowAmount, $project);
+
+            // 3. Crear registro de comisión si no existe
             $existingCommission = \App\Models\PlatformCommission::where('project_id', $project->id)->first();
             if (!$existingCommission) {
                 $paymentService->createCommissionRecord($r->user(), $project, $totalBudget);
             }
 
-            return response()->json(['message' => 'Proyecto financiado con éxito.', 'project' => $project]);
+            return response()->json([
+                'message' => 'Proyecto financiado con éxito.',
+                'escrow_deposit' => $escrowAmount,
+                'platform_fee' => $platformFee,
+                'platform_fee_rate' => $platformFeeRate * 100,
+                'total_charged' => $escrowAmount + $platformFee,
+                'project' => $project
+            ]);
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 400);
         }
@@ -388,22 +409,19 @@ class ProjectController extends Controller
     }
 
     /**
-     * Finalizar proyecto - Cobra el 50% restante y paga a los freelancers
+     * Finalizar proyecto - Cobra el 50% restante y paga TODO el escrow a los freelancers
      * Solo se puede llamar cuando todas las milestones están completadas
      */
     public function complete(Request $r, Project $project)
     {
-        // Verificar que el usuario es la empresa dueña del proyecto
         abort_unless($r->user()->user_type === 'company' && $project->company_id === $r->user()->id, 403);
 
-        // Verificar que el proyecto está en progreso
         if ($project->status !== 'in_progress') {
             return response()->json([
                 'message' => 'El proyecto debe estar en progreso para poder finalizarlo.'
             ], 400);
         }
 
-        // Verificar que hay al menos un desarrollador asignado
         $acceptedApps = $project->applications()->where('status', 'accepted')->get();
         if ($acceptedApps->isEmpty()) {
             return response()->json([
@@ -411,7 +429,6 @@ class ProjectController extends Controller
             ], 400);
         }
 
-        // Verificar que todas las milestones están completadas por todos los desarrolladores
         $totalMilestones = $project->milestones()->count();
         $acceptedDevsCount = $acceptedApps->count();
         $totalExpectedCompletions = $totalMilestones * $acceptedDevsCount;
@@ -435,18 +452,12 @@ class ProjectController extends Controller
             ], 400);
         }
 
-        // Calcular el presupuesto total (usar budget_max si está disponible, sino budget_min)
         $totalBudget = $project->budget_max ?? $project->budget_min ?? 0;
-        $remainingToFund = $totalBudget * 0.5; // El 50% restante
+        $remainingToFund = $totalBudget * 0.5;
 
-        // Calcular el monto restante por pagar (50% del total a dividir entre devs)
-        $remainingToPay = $totalBudget * 0.5;
-        $remainingToPayPerDev = round($remainingToPay / $acceptedDevsCount, 2);
-
-        // Verificar que la empresa tenga suficientes fondos para el 50% restante
         $wallet = $r->user()->wallet()->firstOrCreate(['user_id' => $r->user()->id], ['balance' => 0]);
         $availableBalance = $wallet->balance;
-        
+
         if ($availableBalance < $remainingToFund) {
             return response()->json([
                 'message' => 'Saldo insuficiente para completar el proyecto.',
@@ -456,27 +467,26 @@ class ProjectController extends Controller
         }
 
         try {
-            \Illuminate\Support\Facades\DB::transaction(function () use ($r, $project, $acceptedApps, $totalBudget, $remainingToFund, $remainingToPayPerDev) {
+            DB::transaction(function () use ($r, $project, $acceptedApps, $totalBudget, $remainingToFund) {
                 $paymentService = app(\App\Services\PaymentService::class);
 
-                // 1. Cobrar el 50% restante del proyecto (si no se ha financiado completamente)
-                // NOTA: El primer 50% ya fue financiado al inicio del proyecto
+                // 1. Cobrar el 50% restante al escrow
                 if ($remainingToFund > 0) {
                     $paymentService->fundProject($r->user(), $remainingToFund, $project);
                 }
 
-                // 2. Liberar el 50% RESTANTE a los freelancers dividiendo entre ellos
-                if ($remainingToPayPerDev > 0) {
-                    // Update: releaseFunds service needs the individual app to know who to pay
-                    foreach ($acceptedApps as $app) {
-                       $paymentService->releaseFundsToDeveloper($app, $remainingToPayPerDev, $project);
-                    }
+                // 2. Liberar TODO el escrow (50% inicial + 50% restante) a los developers
+                $companyWallet = $paymentService->getWallet($r->user());
+                $totalHeld = $companyWallet->held_balance;
+
+                if ($totalHeld > 0) {
+                    $paymentService->releaseMilestone($r->user(), $totalHeld, $project, true);
                 }
 
-                // 3. Marcar el proyecto como completado
+                // 3. Marcar proyecto como completado
                 $project->update(['status' => 'completed']);
 
-                // Notificar a todos los desarrolladores aceptados
+                // 4. Notificar a todos los desarrolladores
                 foreach ($acceptedApps as $app) {
                     if ($app->developer) {
                         $app->developer->notify(new \App\Notifications\ProjectCompletedNotification($project));
