@@ -51,20 +51,6 @@ class Project extends Model
         'tags' => 'array',
     ];
 
-    protected function remote(): \Illuminate\Database\Eloquent\Casts\Attribute
-    {
-        return \Illuminate\Database\Eloquent\Casts\Attribute::make(
-            set: fn ($value) => $value ? 'true' : 'false',
-        );
-    }
-
-    protected function featured(): \Illuminate\Database\Eloquent\Casts\Attribute
-    {
-        return \Illuminate\Database\Eloquent\Casts\Attribute::make(
-            set: fn ($value) => $value ? 'true' : 'false',
-        );
-    }
-
     //funciones de relacion
     public function company()
     {
