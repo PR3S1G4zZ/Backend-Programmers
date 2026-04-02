@@ -13,7 +13,7 @@ Route::get('/arreglar-bd', function () {
     return '¡La secuencia de conversaciones ha sido arreglada con exito!';
 });
 
-// Social Auth
+// Social Auth - Must be web routes (not API) to allow HTTP redirects to OAuth providers
 Route::get('/auth/google', [AuthController::class, 'redirectToGoogle']);
 Route::get('/auth/google/callback', [AuthController::class, 'handleGoogleCallback']);
 Route::get('/auth/github', [AuthController::class, 'redirectToGithub']);

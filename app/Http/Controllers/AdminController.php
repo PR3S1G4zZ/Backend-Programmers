@@ -431,7 +431,7 @@ class AdminController extends Controller
             $validated = $request->validate([
                 'title' => 'sometimes|string|max:150',
                 'description' => 'sometimes|string',
-                'status' => 'sometimes|in:open,in_progress,completed,cancelled,draft',
+                'status' => 'sometimes|in:open,in_progress,completed,cancelled,draft,pending_payment',
                 'budget_min' => 'nullable|numeric',
                 'budget_max' => 'nullable|numeric',
                 'deadline' => 'nullable|date',
@@ -538,8 +538,8 @@ class AdminController extends Controller
         
         $cacheKey = "admin_metrics_{$period}";
         
-        // Increase cache duration from 5 minutes to 1 hour for better performance
-        $data = Cache::remember($cacheKey, 3600, function () use ($period) {
+        // Cache de 60 segundos para que los cambios se reflejen rápidamente
+        $data = Cache::remember($cacheKey, 60, function () use ($period) {
             $timeSeries = $this->buildTimeSeries($period);
             return [
                 'activity'     => $this->buildActivityMetrics($period, $timeSeries),
@@ -799,7 +799,9 @@ class AdminController extends Controller
                     'open' => 'Proyectos abiertos',
                     'in_progress' => 'Proyectos en progreso',
                     'completed' => 'Proyectos completados',
+                    'pending_payment' => 'Proyectos esperando pago',
                     'cancelled' => 'Proyectos cancelados',
+                    'draft' => 'Borradores',
                     default => 'Otros',
                 },
                 'value' => round(($count / $totalProjects) * 100, 1),
@@ -808,7 +810,9 @@ class AdminController extends Controller
                     'open' => 'var(--color-neon-green)',
                     'in_progress' => 'var(--color-emerald-green)',
                     'completed' => 'var(--color-chart-3)',
+                    'pending_payment' => 'var(--color-chart-5)',
                     'cancelled' => 'var(--color-chart-4)',
+                    'draft' => 'var(--color-muted-foreground)',
                     default => 'var(--color-neon-green)',
                 },
             ];
@@ -974,7 +978,9 @@ class AdminController extends Controller
                     'open' => 'Abiertos',
                     'in_progress' => 'En progreso',
                     'completed' => 'Completados',
+                    'pending_payment' => 'Esperando pago',
                     'cancelled' => 'Cancelados',
+                    'draft' => 'Borradores',
                     default => 'Otros',
                 },
                 'projects' => $count,
