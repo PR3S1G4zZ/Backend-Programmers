@@ -92,8 +92,12 @@ class ApplicationController extends Controller
                 // 1. Update Application Status
                 $application->update(['status' => 'accepted']);
 
-                // Notificar al desarrollador
-                $application->developer->notify(new \App\Notifications\ApplicationAcceptedNotification($project, $r->user()));
+                // Notificar al desarrollador (sin interrumpir la transacción principal si falla)
+                try {
+                    $application->developer->notify(new \App\Notifications\ApplicationAcceptedNotification($project, $r->user()));
+                } catch (\Throwable $err) {
+                    \Illuminate\Support\Facades\Log::error('No se pudo enviar el correo de aceptación: ' . $err->getMessage());
+                }
 
                 // 2. Reject other pending applications for this project (optional but common)
                 // $project->applications()->where('id', '!=', $application->id)->update(['status' => 'rejected']);
@@ -104,8 +108,10 @@ class ApplicationController extends Controller
                 // 4. Dispatch Event to handle Chat Creation
                 \App\Events\ApplicationAccepted::dispatch($application);
             });
-        } catch (\Exception $e) {
-            return response()->json(['message' => 'Error: ' . $e->getMessage()], 400);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Error interno procesando la aceptación. Detalle: ' . $e->getMessage()
+            ], 400);
         }
 
         return response()->json(['message' => 'Candidato aceptado, pago procesado y chat iniciado.']);
