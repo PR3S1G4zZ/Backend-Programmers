@@ -161,7 +161,7 @@ class ConversationController extends Controller
 
         if ($hasFile) {
             $file = $request->file('file');
-            $path = $file->store('chat-files', 'supabase');
+            $path = $file->store('chat-files', 'public');
 
             $messageData['type'] = str_starts_with($file->getMimeType(), 'image/') ? 'image' : 'file';
             $messageData['file_path'] = $path;
@@ -191,9 +191,7 @@ class ConversationController extends Controller
 
     private function fileUrl(string $path): string
     {
-        $supabaseUrl = rtrim(config('filesystems.disks.supabase.endpoint', ''), '/s3');
-        $bucket = config('filesystems.disks.supabase.bucket', 'chat-files');
-        return $supabaseUrl . '/object/public/' . $bucket . '/' . $path;
+        return asset('storage/' . $path);
     }
 
     private function formatFileSize(int $bytes): string
