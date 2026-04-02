@@ -497,23 +497,18 @@ class AuthController extends Controller
                 return $this->loginAndRedirect($user, $frontendUrl);
             }
 
-            // No está vinculado, iniciamos flujo de verificación
-            $token = Str::random(40);
-            $user->social_link_token = $token;
-            $user->social_link_provider = $provider;
-            $user->social_link_id = $socialUser->getId();
+            // --- MODO DE PRUEBAS: AUTO-VINCULACIÓN INMEDIATA ---
+            // Como las cuentas de correo temporales o configuraciones SMTP en Railway pueden fallar/demorar,
+            // vinculamos la cuenta directamente si el email coincide (confiamos en la validación de Google/Github).
+            $user->{$providerIdField} = $socialUser->getId();
+            
             // Actualizamos avatar si no tenía
             if (!$user->avatar && $socialUser->getAvatar()) {
                 $user->avatar = $socialUser->getAvatar();
             }
             $user->save();
 
-            // Enviar email
-            $verifyUrl = "{$frontendUrl}/verify-social-link?token={$token}";
-            Mail::to($user->email)->send(new SocialLinkVerification($verifyUrl));
-
-            // Redirigir a la página indicando que revise su correo
-            return redirect("{$frontendUrl}/auth/callback?status=verification_sent");
+            return $this->loginAndRedirect($user, $frontendUrl);
 
         } catch (\Exception $e) {
             return response()->json(['error' => 'Error en autenticación ' . ucfirst($provider) . ': ' . $e->getMessage()], 500);
