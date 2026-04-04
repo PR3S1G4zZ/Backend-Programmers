@@ -111,9 +111,6 @@ class AuthController extends Controller
 
             $token = $user->createToken('auth_token')->plainTextToken;
 
-            // Enviar correo de verificación (en background, no bloquea el registro)
-            $this->createAndSendVerificationToken($user);
-
             return response()->json([
                 'success' => true,
                 'message' => 'Usuario registrado exitosamente',

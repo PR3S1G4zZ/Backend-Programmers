@@ -97,7 +97,7 @@ class DashboardController extends Controller
                   ->orWhere('participant_id', $uid);
             })
             ->where('sender_id', '!=', $uid)
-            ->where('is_read', false)
+            ->whereRaw('is_read = false')
             ->count();
 
         // 5. Recent Activity (Mocked for now mostly, or fetch real events)
