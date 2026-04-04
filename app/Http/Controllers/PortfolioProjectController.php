@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\PortfolioProject;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
 
 class PortfolioProjectController extends Controller
 {
@@ -55,7 +56,7 @@ class PortfolioProjectController extends Controller
 
         // FORZAR conversión a booleano para evitar error en PostgreSQL
         if (array_key_exists('featured', $data)) {
-            $data['featured'] = (bool) filter_var($data['featured'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            $data['featured'] = $data['featured'] ? DB::raw('true') : DB::raw('false');
         }
 
         $entry = new PortfolioProject($data);
@@ -101,7 +102,7 @@ class PortfolioProjectController extends Controller
 
         // FORZAR conversión a booleano para evitar error en PostgreSQL
         if (array_key_exists('featured', $data)) {
-            $data['featured'] = (bool) filter_var($data['featured'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            $data['featured'] = $data['featured'] ? DB::raw('true') : DB::raw('false');
         }
 
         if ($request->hasFile('image')) {

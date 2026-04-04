@@ -30,7 +30,7 @@ class PaymentMethodController extends Controller
         if ($data['is_default'] ?? false) {
             PaymentMethod::where('user_id', $r->user()->id)
                 ->where('is_default', DB::raw('true'))
-                ->update(['is_default' => false]);
+                ->update(['is_default' => DB::raw('false')]);
         }
 
         $method = $r->user()->paymentMethods()->create($data);
@@ -66,7 +66,7 @@ class PaymentMethodController extends Controller
             PaymentMethod::where('user_id', $r->user()->id)
                 ->where('id', '!=', $paymentMethod->id)
                 ->where('is_default', DB::raw('true'))
-                ->update(['is_default' => false]);
+                ->update(['is_default' => DB::raw('false')]);
         }
 
         $paymentMethod->update($data);
