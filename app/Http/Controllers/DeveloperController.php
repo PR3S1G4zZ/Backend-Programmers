@@ -29,7 +29,7 @@ class DeveloperController extends Controller
             });
         }
 
-        $developers = $query->paginate(15)->through(function ($developer) {
+        $developers = $query->get()->map(function ($developer) {
             $profile = $developer->developerProfile;
             
             $completedProjects = $developer->completed_projects_count ?? 0;
@@ -58,7 +58,7 @@ class DeveloperController extends Controller
 
         return response()->json([
             'success' => true,
-            ...$developers->toArray(),
+            'data' => $developers,
         ]);
     }
     public function show($id): JsonResponse
