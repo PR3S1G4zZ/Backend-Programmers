@@ -86,8 +86,8 @@ class ProjectController extends Controller
                 $query->where('developer_id', $r->user()->id ?? 0);
             }]);
             
-        // Por defecto, solo mostrar proyectos abiertos para programadores
-        if (! $r->filled('status') && ($r->user()->user_type === 'programmer')) {
+        // Por defecto, solo mostrar proyectos abiertos para programadores (a menos que busque sus propios proyectos)
+        if (! $r->filled('status') && ($r->user()->user_type === 'programmer') && !$r->filled('my_projects')) {
             $q->where('status', 'open');
         }
         

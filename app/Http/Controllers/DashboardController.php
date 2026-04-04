@@ -77,7 +77,8 @@ class DashboardController extends Controller
                     'client' => $app->project->company?->name ?? 'Confidencial',
                     'progress' => $app->project->getDeveloperProgress($uid), // Use new method
                     'deadline' => $app->project->deadline ?? 'N/A',
-                    'value' => '$' . number_format($app->project->budget_min ?? 0, 0)
+                    'value' => '$' . number_format($app->project->budget_min ?? 0, 0),
+                    'project' => new \App\Http\Resources\ProjectResource($app->project)
                 ];
             });
 
