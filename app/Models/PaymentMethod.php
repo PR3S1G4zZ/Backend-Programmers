@@ -28,6 +28,10 @@ class PaymentMethod extends Model
         return $this->belongsTo(User::class);
     }
 
+    /**
+     * Mutador para 'is_default': Convierte valores como "0", "1", "true", "false" a booleano real
+     * Evita errores de tipo en PostgreSQL donde la columna es boolean
+     */
     public function setIsDefaultAttribute($value)
     {
         $this->attributes['is_default'] = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;

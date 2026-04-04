@@ -36,6 +36,10 @@ class PortfolioProject extends Model
         return $this->belongsTo(User::class);
     }
 
+    /**
+     * Mutador para 'featured': Convierte valores como "0", "1", "true", "false" a booleano real
+     * Evita errores de tipo en PostgreSQL donde la columna es boolean
+     */
     public function setFeaturedAttribute($value)
     {
         $this->attributes['featured'] = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;

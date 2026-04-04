@@ -20,9 +20,9 @@ class PaymentMethodController extends Controller
             'is_default' => 'nullable'
         ]);
 
-        $data['is_default'] = $r->boolean('is_default', false);
-
-        if ($data['is_default']) {
+        // El mutador del modelo se encarga de convertir 'is_default' a booleano
+        // Solo necesitamos lógica para desvincular otros métodos como default
+        if ($r->boolean('is_default', false)) {
             $r->user()->paymentMethods()->where('is_default', true)->each(function ($method) {
                 $method->update(['is_default' => false]);
             });
@@ -53,14 +53,12 @@ class PaymentMethodController extends Controller
             'is_default' => 'nullable'
         ]);
 
-        if ($r->has('is_default')) {
-            $data['is_default'] = $r->boolean('is_default');
-
-            if ($data['is_default']) {
-                $r->user()->paymentMethods()->where('id', '!=', $paymentMethod->id)->where('is_default', true)->each(function ($method) {
-                    $method->update(['is_default' => false]);
-                });
-            }
+        // El mutador del modelo se encarga de convertir 'is_default' a booleano
+        // Solo necesitamos lógica para desvincular otros métodos como default
+        if ($r->has('is_default') && $r->boolean('is_default')) {
+            $r->user()->paymentMethods()->where('id', '!=', $paymentMethod->id)->where('is_default', true)->each(function ($method) {
+                $method->update(['is_default' => false]);
+            });
         }
 
         $paymentMethod->update($data);

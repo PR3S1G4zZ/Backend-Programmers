@@ -45,8 +45,7 @@ class PortfolioProjectController extends Controller
             'image' => 'nullable|image|max:2048',
         ]);
 
-        $data['featured'] = $request->boolean('featured', false);
-
+        // El mutador del modelo se encarga de convertir 'featured' a booleano
         $entry = new PortfolioProject($data);
         $entry->user_id = $request->user()->id;
 
@@ -80,9 +79,7 @@ class PortfolioProjectController extends Controller
             'image' => 'nullable|image|max:2048',
         ]);
 
-        if ($request->has('featured')) {
-            $data['featured'] = $request->boolean('featured');
-        }
+        // El mutador del modelo se encarga de convertir 'featured' a booleano
 
         if ($request->hasFile('image')) {
             // Delete old image if exists
