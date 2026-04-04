@@ -7,8 +7,9 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
 use App\Models\{Conversation, Message, User};
 
-class CreateProjectChat
+class CreateProjectChat implements ShouldQueue
 {
+    use InteractsWithQueue;
     /**
      * Create the event listener.
      */

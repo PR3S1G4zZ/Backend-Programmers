@@ -65,7 +65,7 @@ class DeveloperController extends Controller
     {
         $developer = User::where('user_type', 'programmer')
             ->where('id', $id)
-            ->with('developerProfile')
+            ->with(['developerProfile', 'portfolioProjects'])
             ->withCount('reviewsReceived')
             ->withAvg('reviewsReceived', 'rating')
             ->withCount([
@@ -97,10 +97,26 @@ class DeveloperController extends Controller
                 ];
             });
 
+        // Get portfolio projects (personal/external projects)
+        $portfolioProjectsList = $developer->portfolioProjects->map(function ($project) {
+            return [
+                'id' => $project->id,
+                'title' => $project->title,
+                'description' => $project->description,
+                'image_url' => $project->image_url ? asset('storage/' . $project->image_url) : null,
+                'project_url' => $project->project_url,
+                'github_url' => $project->github_url,
+                'technologies' => $project->technologies ?? [],
+                'completion_date' => $project->completion_date,
+                'client' => $project->client,
+                'featured' => $project->featured,
+            ];
+        });
+
         $data = [
             'id' => (string) $developer->id,
             'name' => $developer->name . ' ' . $developer->lastname,
-            'email' => $developer->email, // Added email for contact info if needed
+            'email' => $developer->email,
             'title' => $profile?->headline ?? 'Desarrollador',
             'location' => $profile?->location ?? 'Sin ubicación',
             'hourlyRate' => $profile?->hourly_rate ?? null,
@@ -108,14 +124,10 @@ class DeveloperController extends Controller
             'reviewsCount' => $developer->reviews_received_count ?? 0,
             'completedProjects' => $completedProjects,
             'completedProjectsList' => $completedProjectsList,
+            'portfolioProjectsList' => $portfolioProjectsList,
             'availability' => $profile?->availability ?? 'available',
             'skills' => $profile?->skills ?? [],
-            'experience' => $profile?->experience_years ?? null, // Note: The frontend expects array of objects for experience? logic in ProfileSection suggests so. Let's check ProfileSection again or the Model.
-            // ProfileSection uses "experience" state which is an array of objects {company, position...}. 
-            // the DeveloperController index uses $profile?->experience_years which seems to be a number? 
-            // valid point. The `create_developer_profiles_table` migration should be checked.
-            // But for now let's return what we have in the DB.
-            'experience_details' => $profile?->experience ?? [], // Assuming 'experience' column stores JSON or similar
+            'experience' => $profile?->experience_years ?? null,
             'languages' => $profile?->languages ?? [],
             'bio' => $profile?->bio ?? '',
             'links' => $profile?->links ?? [],

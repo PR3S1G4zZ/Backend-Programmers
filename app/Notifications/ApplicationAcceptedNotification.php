@@ -18,7 +18,9 @@ class ApplicationAcceptedNotification extends Notification implements ShouldQueu
 
     public function via($notifiable): array
     {
-        return ['database', 'mail'];
+        // Temporarily disabled 'mail' to avoid 60s timeouts during dev/testing
+        // return ['database', 'mail'];
+        return ['database'];
     }
 
     public function toMail($notifiable): MailMessage

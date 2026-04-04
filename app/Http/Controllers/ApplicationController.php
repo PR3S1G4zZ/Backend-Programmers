@@ -80,41 +80,33 @@ class ApplicationController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($application, $project, $r, $paymentService, $amountToPay) {
-                // 0. Process Payment
-                if ($amountToPay > 0) {
-                // 0. Hold Funds in Escrow (Removed: Now handled via Milestones/Deposit)
-                // if ($amountToPay > 0) {
-                //    $paymentService->holdFunds($r->user(), $amountToPay, $project);
-                // }
-                }
-
+            DB::transaction(function () use ($application) {
                 // 1. Update Application Status
                 $application->update(['status' => 'accepted']);
-
-                // Notificar al desarrollador (sin interrumpir la transacción principal si falla)
-                try {
-                    $application->developer->notify(new \App\Notifications\ApplicationAcceptedNotification($project, $r->user()));
-                } catch (\Throwable $err) {
-                    \Illuminate\Support\Facades\Log::error('No se pudo enviar el correo de aceptación: ' . $err->getMessage());
-                }
-
-                // 2. Reject other pending applications for this project (optional but common)
-                // $project->applications()->where('id', '!=', $application->id)->update(['status' => 'rejected']);
-    
-                // 3. No longer update project status to in_progress here - wait for manual start button
-                // $project->update(['status' => 'in_progress']);
-    
-                // 4. Dispatch Event to handle Chat Creation
+                
+                // 2. Dispatch Event - This will handle Chat sync or async
                 \App\Events\ApplicationAccepted::dispatch($application);
             });
+
+            // 3. Send Notification AFTER the transaction is successfully committed
+            try {
+                // This will use 'database' channel (mail disabled in its class)
+                $application->developer->notify(new \App\Notifications\ApplicationAcceptedNotification($project, $r->user()));
+                \Illuminate\Support\Facades\Log::info("Notificación de aceptación enviada al dev ID: {$application->developer_id}");
+            } catch (\Throwable $err) {
+                \Illuminate\Support\Facades\Log::error('Error no fatal enviando notificación: ' . $err->getMessage());
+            }
+
+            \Illuminate\Support\Facades\Log::info("Candidato aceptado exitosamente por empresa ID: {$r->user()->id}");
+
         } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error("Falla crítica en aceptación: " . $e->getMessage());
             return response()->json([
-                'message' => 'Error interno procesando la aceptación. Detalle: ' . $e->getMessage()
+                'message' => 'Error interno procesando la aceptación.'
             ], 400);
         }
 
-        return response()->json(['message' => 'Candidato aceptado, pago procesado y chat iniciado.']);
+        return response()->json(['message' => 'Candidato aceptado y chat iniciado.']);
     }
 
     public function reject(Request $r, Application $application)

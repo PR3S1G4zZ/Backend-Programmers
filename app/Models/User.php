@@ -238,4 +238,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(Application::class, 'developer_id');
     }
+
+    public function portfolioProjects()
+    {
+        return $this->hasMany(PortfolioProject::class);
+    }
 }
