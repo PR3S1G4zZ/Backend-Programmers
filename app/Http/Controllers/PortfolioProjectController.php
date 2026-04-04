@@ -41,9 +41,11 @@ class PortfolioProjectController extends Controller
             'client' => 'nullable|string|max:255',
             'completion_date' => 'nullable|string|max:255',
             'technologies' => 'nullable|array',
-            'featured' => 'boolean',
-            'image' => 'nullable|image|max:2048', // 2MB Max
+            'featured' => 'nullable|boolean',
+            'image' => 'nullable|image|max:2048',
         ]);
+
+        $data['featured'] = filter_var($request->input('featured', false), FILTER_VALIDATE_BOOLEAN);
 
         $entry = new PortfolioProject($data);
         $entry->user_id = $request->user()->id;
@@ -74,9 +76,13 @@ class PortfolioProjectController extends Controller
             'client' => 'nullable|string|max:255',
             'completion_date' => 'nullable|string|max:255',
             'technologies' => 'nullable|array',
-            'featured' => 'boolean',
+            'featured' => 'nullable|boolean',
             'image' => 'nullable|image|max:2048',
         ]);
+
+        if ($request->has('featured')) {
+            $data['featured'] = filter_var($request->input('featured'), FILTER_VALIDATE_BOOLEAN);
+        }
 
         if ($request->hasFile('image')) {
             // Delete old image if exists
