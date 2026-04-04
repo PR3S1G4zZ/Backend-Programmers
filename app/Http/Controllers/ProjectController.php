@@ -196,10 +196,12 @@ class ProjectController extends Controller
                 }
 
                 // 4. Create a group chat for the project
-                // PostgreSQL requires literal boolean — DB::raw('true') prevents PDO from sending integer 1
                 $conversation = Conversation::create([
                     'name' => $project->title,
-                    'is_group' => DB::raw('true')
+                    'type' => 'group',
+                    'is_group' => true,
+                    'initiator_id' => $request->user()->id,
+                    'project_id' => $project->id,
                 ]);
 
                 // 5. Add company user to the conversation
