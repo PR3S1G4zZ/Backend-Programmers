@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Project;
+use App\Models\Conversation;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\Favorite;
 use App\Models\DeveloperProgress;
