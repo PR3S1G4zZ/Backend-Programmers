@@ -16,24 +16,14 @@ class PaymentMethod extends Model
         'is_default',
     ];
 
+    protected $casts = [
+        'is_default' => 'boolean',
+    ];
+
     public function user()
     {
         return $this->belongsTo(User::class);
     }
 
-    /**
-     * Mutador para is_default: asegura que se guarde como booleano
-     */
-    public function setIsDefaultAttribute($value)
-    {
-        $this->attributes['is_default'] = $value ? true : false;
-    }
 
-    /**
-     * Accessor para is_default: asegura que siempre retorne booleano
-     */
-    public function getIsDefaultAttribute($value)
-    {
-        return (bool) $value;
-    }
 }

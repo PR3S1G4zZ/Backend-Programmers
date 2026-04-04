@@ -54,9 +54,8 @@ class PortfolioProjectController extends Controller
             $data['github_url'] = 'https://' . $data['github_url'];
         }
 
-        // FORZAR conversión a booleano para evitar error en PostgreSQL
         if (array_key_exists('featured', $data)) {
-            $data['featured'] = $data['featured'] ? DB::raw('true') : DB::raw('false');
+            $data['featured'] = (bool) $data['featured'];
         }
 
         $entry = new PortfolioProject($data);
@@ -100,9 +99,8 @@ class PortfolioProjectController extends Controller
             $data['github_url'] = 'https://' . $data['github_url'];
         }
 
-        // FORZAR conversión a booleano para evitar error en PostgreSQL
         if (array_key_exists('featured', $data)) {
-            $data['featured'] = $data['featured'] ? DB::raw('true') : DB::raw('false');
+            $data['featured'] = (bool) $data['featured'];
         }
 
         if ($request->hasFile('image')) {

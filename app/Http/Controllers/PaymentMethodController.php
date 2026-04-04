@@ -11,7 +11,7 @@ class PaymentMethodController extends Controller
     public function index(Request $r)
     {
         return PaymentMethod::where('user_id', $r->user()->id)
-            ->where('is_default', DB::raw('true'))
+            ->where('is_default', true)
             ->get();
     }
 
@@ -29,8 +29,8 @@ class PaymentMethodController extends Controller
 
         if ($data['is_default'] ?? false) {
             PaymentMethod::where('user_id', $r->user()->id)
-                ->where('is_default', DB::raw('true'))
-                ->update(['is_default' => DB::raw('false')]);
+                ->where('is_default', true)
+                ->update(['is_default' => false]);
         }
 
         $method = $r->user()->paymentMethods()->create($data);
@@ -65,8 +65,8 @@ class PaymentMethodController extends Controller
         if ($data['is_default'] ?? false) {
             PaymentMethod::where('user_id', $r->user()->id)
                 ->where('id', '!=', $paymentMethod->id)
-                ->where('is_default', DB::raw('true'))
-                ->update(['is_default' => DB::raw('false')]);
+                ->where('is_default', true)
+                ->update(['is_default' => false]);
         }
 
         $paymentMethod->update($data);

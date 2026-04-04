@@ -26,8 +26,7 @@ class PortfolioProject extends Model
 
     protected $casts = [
         'technologies' => 'array',
-        // No usamos 'boolean' en casts porque interfiere con el mutador
-        // El mutador se encarga de la conversión
+        'featured' => 'boolean',
         'views' => 'integer',
         'likes' => 'integer',
     ];
@@ -37,19 +36,5 @@ class PortfolioProject extends Model
         return $this->belongsTo(User::class);
     }
 
-    /**
-     * Mutador para featured: asegura que se guarde como booleano
-     */
-    public function setFeaturedAttribute($value)
-    {
-        $this->attributes['featured'] = $value ? true : false;
-    }
 
-    /**
-     * Accessor para featured: asegura que siempre retorne booleano
-     */
-    public function getFeaturedAttribute($value)
-    {
-        return (bool) $value;
-    }
 }
