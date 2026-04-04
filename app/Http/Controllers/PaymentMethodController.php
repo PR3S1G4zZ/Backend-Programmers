@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\PaymentMethod;
-use Illuminate\Support\Facades\DB;
 
 class PaymentMethodController extends Controller
 {
@@ -18,11 +17,10 @@ class PaymentMethodController extends Controller
         $data = $r->validate([
             'type' => 'required|string|in:credit_card,paypal,bank_transfer,crypto_wallet',
             'details' => 'required|string',
-            'is_default' => 'nullable|boolean'
+            'is_default' => 'nullable'
         ]);
 
-        // Convertir a booleano explícitamente para evitar errores de tipo
-        $data['is_default'] = filter_var($r->input('is_default', false), FILTER_VALIDATE_BOOLEAN);
+        $data['is_default'] = $r->boolean('is_default', false);
 
         if ($data['is_default']) {
             $r->user()->paymentMethods()->where('is_default', true)->each(function ($method) {
@@ -52,19 +50,17 @@ class PaymentMethodController extends Controller
         $data = $r->validate([
             'type' => 'string|in:credit_card,paypal,bank_transfer,crypto_wallet',
             'details' => 'string',
-            'is_default' => 'boolean'
+            'is_default' => 'nullable'
         ]);
 
-        // Convertir a booleano explícitamente para evitar errores de tipo
-        // Ensure is_default is a strict boolean for PostgreSQL
-        if (array_key_exists('is_default', $data)) {
-            $data['is_default'] = (bool) $data['is_default'];
-        }
+        if ($r->has('is_default')) {
+            $data['is_default'] = $r->boolean('is_default');
 
-        if (($data['is_default'] ?? false)) {
-            $r->user()->paymentMethods()->where('id', '!=', $paymentMethod->id)->where('is_default', true)->each(function ($method) {
-                $method->update(['is_default' => false]);
-            });
+            if ($data['is_default']) {
+                $r->user()->paymentMethods()->where('id', '!=', $paymentMethod->id)->where('is_default', true)->each(function ($method) {
+                    $method->update(['is_default' => false]);
+                });
+            }
         }
 
         $paymentMethod->update($data);

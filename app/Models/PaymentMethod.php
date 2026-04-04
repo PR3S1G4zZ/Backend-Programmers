@@ -27,4 +27,9 @@ class PaymentMethod extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public function setIsDefaultAttribute($value)
+    {
+        $this->attributes['is_default'] = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;
+    }
 }
