@@ -36,14 +36,22 @@ class PortfolioProjectController extends Controller
         $data = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'required|string',
-            'project_url' => 'nullable|url',
-            'github_url' => 'nullable|url',
+            'project_url' => 'nullable|string|max:500',
+            'github_url' => 'nullable|string|max:500',
             'client' => 'nullable|string|max:255',
             'completion_date' => 'nullable|string|max:255',
             'technologies' => 'nullable|array',
             'featured' => 'nullable',
             'image' => 'nullable|image|max:2048',
         ]);
+
+        // Validar URLs manualmente - permitir dominios sin protocolo
+        if (!empty($data['project_url']) && !preg_match('/^https?:\/\//i', $data['project_url'])) {
+            $data['project_url'] = 'https://' . $data['project_url'];
+        }
+        if (!empty($data['github_url']) && !preg_match('/^https?:\/\//i', $data['github_url'])) {
+            $data['github_url'] = 'https://' . $data['github_url'];
+        }
 
         // FORZAR conversión a booleano para evitar error en PostgreSQL
         if (array_key_exists('featured', $data)) {
@@ -74,14 +82,22 @@ class PortfolioProjectController extends Controller
         $data = $request->validate([
             'title' => 'sometimes|string|max:255',
             'description' => 'sometimes|string',
-            'project_url' => 'nullable|url',
-            'github_url' => 'nullable|url',
+            'project_url' => 'nullable|string|max:500',
+            'github_url' => 'nullable|string|max:500',
             'client' => 'nullable|string|max:255',
             'completion_date' => 'nullable|string|max:255',
             'technologies' => 'nullable|array',
             'featured' => 'nullable',
             'image' => 'nullable|image|max:2048',
         ]);
+
+        // Validar URLs manualmente - permitir dominios sin protocolo
+        if (!empty($data['project_url']) && !preg_match('/^https?:\/\//i', $data['project_url'])) {
+            $data['project_url'] = 'https://' . $data['project_url'];
+        }
+        if (!empty($data['github_url']) && !preg_match('/^https?:\/\//i', $data['github_url'])) {
+            $data['github_url'] = 'https://' . $data['github_url'];
+        }
 
         // FORZAR conversión a booleano para evitar error en PostgreSQL
         if (array_key_exists('featured', $data)) {

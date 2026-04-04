@@ -4,12 +4,15 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\PaymentMethod;
+use Illuminate\Support\Facades\DB;
 
 class PaymentMethodController extends Controller
 {
     public function index(Request $r)
     {
-        return $r->user()->paymentMethods;
+        return PaymentMethod::where('user_id', $r->user()->id)
+            ->where('is_default', DB::raw('true'))
+            ->get();
     }
 
     public function store(Request $r)
@@ -20,15 +23,14 @@ class PaymentMethodController extends Controller
             'is_default' => 'nullable'
         ]);
 
-        // FORZAR conversión a booleano para evitar error en PostgreSQL
         if (array_key_exists('is_default', $data)) {
             $data['is_default'] = (bool) filter_var($data['is_default'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         }
 
         if ($data['is_default'] ?? false) {
-            $r->user()->paymentMethods()->where('is_default', true)->each(function ($method) {
-                $method->update(['is_default' => false]);
-            });
+            PaymentMethod::where('user_id', $r->user()->id)
+                ->where('is_default', DB::raw('true'))
+                ->update(['is_default' => false]);
         }
 
         $method = $r->user()->paymentMethods()->create($data);
@@ -56,15 +58,15 @@ class PaymentMethodController extends Controller
             'is_default' => 'nullable'
         ]);
 
-        // FORZAR conversión a booleano para evitar error en PostgreSQL
         if (array_key_exists('is_default', $data)) {
             $data['is_default'] = (bool) filter_var($data['is_default'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         }
 
         if ($data['is_default'] ?? false) {
-            $r->user()->paymentMethods()->where('id', '!=', $paymentMethod->id)->where('is_default', true)->each(function ($method) {
-                $method->update(['is_default' => false]);
-            });
+            PaymentMethod::where('user_id', $r->user()->id)
+                ->where('id', '!=', $paymentMethod->id)
+                ->where('is_default', DB::raw('true'))
+                ->update(['is_default' => false]);
         }
 
         $paymentMethod->update($data);
