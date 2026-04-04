@@ -196,13 +196,13 @@ class ProjectController extends Controller
                 }
 
                 // 4. Create a group chat for the project
-                // DB::raw('true') is required because Laravel PDO sends PHP true as integer 1,
-                // which PostgreSQL rejects for boolean columns
+                // participant_id is NOT NULL in DB (designed for 1:1 chats), so we use the first dev
                 $conversation = Conversation::create([
                     'name' => $project->title,
                     'type' => 'group',
                     'is_group' => DB::raw('true'),
                     'initiator_id' => $request->user()->id,
+                    'participant_id' => $acceptedDevelopers->first(),
                     'project_id' => $project->id,
                 ]);
 
