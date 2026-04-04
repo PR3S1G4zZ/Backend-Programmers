@@ -350,38 +350,11 @@ class ProjectController extends Controller
             $path = $r->file('image')->store('projects', 'public');
             $project->image_url = $path;
         }
-        // Check if completing project
+        // Block completing project via update — must use the dedicated complete() endpoint
         if (($data['status'] ?? '') === 'completed' && $project->status !== 'completed') {
-             // Find accepted application
-             $acceptedApp = $project->applications()->where('status', 'accepted')->first();
-             
-             if ($acceptedApp) {
-                  // Calcular el presupuesto total (usar budget_max si está disponible)
-                  $totalBudget = $project->budget_max ?? $project->budget_min ?? 0;
-                  $remainingToFund = $totalBudget * 0.5;
-                  
-                  // Calcular el monto restante por pagar (50% del total)
-                  $remainingToPay = $totalBudget * 0.5;
-                  
-                  // 2. Wrap in transaction: Fund remaining 50% -> Release remaining 50%
-                  try {
-                      \Illuminate\Support\Facades\DB::transaction(function () use ($r, $project, $acceptedApp, $totalBudget, $remainingToFund, $remainingToPay) {
-                          $paymentService = app(\App\Services\PaymentService::class);
-                          
-                          // Fund the remaining 50%
-                          if ($remainingToFund > 0) {
-                              $paymentService->fundProject($r->user(), $remainingToFund, $project);
-                          }
-
-                          // Release only the remaining 50% (not 100%) to avoid double payment
-                          if ($remainingToPay > 0) {
-                              $paymentService->releaseFunds($r->user(), $remainingToPay, $project);
-                          }
-                      });
-                  } catch (\Exception $e) {
-                      return response()->json(['message' => 'Error en el proceso de pago final: ' . $e->getMessage()], 400);
-                  }
-             }
+            return response()->json([
+                'message' => 'Para finalizar un proyecto, usa el endpoint dedicado POST /projects/{id}/complete.'
+            ], 400);
         }
         
         $project->update($data);
@@ -432,8 +405,6 @@ class ProjectController extends Controller
         }
 
         $totalMilestones = $project->milestones()->count();
-        $acceptedDevsCount = $acceptedApps->count();
-        $totalExpectedCompletions = $totalMilestones; // Cada milestone es individual, no se multiplica
 
         if ($totalMilestones === 0) {
             return response()->json([
@@ -445,17 +416,18 @@ class ProjectController extends Controller
             ->where('progress_status', 'completed')
             ->count();
 
-        if ($completedMilestones < $totalExpectedCompletions) {
+        if ($completedMilestones < $totalMilestones) {
             return response()->json([
-                'message' => 'No se puede finalizar el proyecto. Hay milestones pendientes de completar por algunos desarrolladores.',
+                'message' => 'No se puede finalizar el proyecto. Hay milestones pendientes de completar.',
                 'completed' => $completedMilestones,
-                'total' => $totalExpectedCompletions,
-                'progress_percentage' => round(($completedMilestones / $totalExpectedCompletions) * 100)
+                'total' => $totalMilestones,
+                'progress_percentage' => round(($completedMilestones / $totalMilestones) * 100)
             ], 400);
         }
 
         $totalBudget = $project->budget_max ?? $project->budget_min ?? 0;
-        $remainingToFund = $totalBudget * 0.5;
+        $remainingToFund = $totalBudget * 0.5; // Second 50% to add to escrow
+        $totalToRelease = $totalBudget; // Release 100% of budget (50% already held + 50% new)
 
         $wallet = $r->user()->wallet()->firstOrCreate(['user_id' => $r->user()->id], ['balance' => 0]);
         $availableBalance = $wallet->balance;
@@ -469,32 +441,34 @@ class ProjectController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($r, $project, $acceptedApps, $totalBudget, $remainingToFund) {
+            // Financial operations ONLY inside the transaction — NO notifications
+            DB::transaction(function () use ($r, $project, $totalBudget, $remainingToFund, $totalToRelease) {
                 $paymentService = app(\App\Services\PaymentService::class);
 
-                // 1. Cobrar el 50% restante al escrow
+                // 1. Fund the remaining 50% into escrow
                 if ($remainingToFund > 0) {
                     $paymentService->fundProject($r->user(), $remainingToFund, $project);
                 }
 
-                // 2. Liberar TODO el escrow (50% inicial + 50% restante) a los developers
-                $companyWallet = $paymentService->getWallet($r->user());
-                $totalHeld = $companyWallet->held_balance;
-
-                if ($totalHeld > 0) {
-                    $paymentService->releaseMilestone($r->user(), $totalHeld, $project, true);
+                // 2. Release the project-specific amount (totalBudget) — NOT the entire held_balance
+                if ($totalToRelease > 0) {
+                    $paymentService->releaseMilestone($r->user(), $totalToRelease, $project, true);
                 }
 
-                // 3. Marcar proyecto como completado
+                // 3. Mark project as completed
                 $project->update(['status' => 'completed']);
+            });
 
-                // 4. Notificar a todos los desarrolladores
-                foreach ($acceptedApps as $app) {
+            // 4. Notifications OUTSIDE the transaction — prevents hanging if mail fails
+            foreach ($acceptedApps as $app) {
+                try {
                     if ($app->developer) {
                         $app->developer->notify(new \App\Notifications\ProjectCompletedNotification($project));
                     }
+                } catch (\Exception $e) {
+                    \Log::warning("Failed to send project completion notification to developer {$app->developer_id}: " . $e->getMessage());
                 }
-            });
+            }
 
             return response()->json([
                 'message' => 'Proyecto completado exitosamente. El pago ha sido liberado al freelancer.',
@@ -502,6 +476,7 @@ class ProjectController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            \Log::error("Error completing project #{$project->id}: " . $e->getMessage());
             return response()->json([
                 'message' => 'Error en el proceso de pago: ' . $e->getMessage()
             ], 400);

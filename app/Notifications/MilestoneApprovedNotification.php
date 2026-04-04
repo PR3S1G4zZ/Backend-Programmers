@@ -7,7 +7,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class MilestoneApprovedNotification extends Notification
+class MilestoneApprovedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
@@ -18,7 +18,7 @@ class MilestoneApprovedNotification extends Notification
 
     public function via($notifiable): array
     {
-        return ['database', 'mail'];
+        return ['database'];
     }
 
     public function toMail($notifiable): MailMessage

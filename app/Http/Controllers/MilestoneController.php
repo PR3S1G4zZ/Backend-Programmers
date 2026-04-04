@@ -145,14 +145,27 @@ class MilestoneController extends Controller
             'progress_status' => 'completed',
         ]);
 
-        // Notificar al desarrollador asignado
-        if ($milestone->assignedDeveloper) {
-            $milestone->assignedDeveloper->notify(new \App\Notifications\MilestoneApprovedNotification($milestone, $project));
+        // Notification — wrapped in try-catch so approval still succeeds if mail fails
+        try {
+            if ($milestone->assignedDeveloper) {
+                $milestone->assignedDeveloper->notify(new \App\Notifications\MilestoneApprovedNotification($milestone, $project));
+            }
+        } catch (\Exception $e) {
+            \Log::warning("Failed to send milestone approval notification: " . $e->getMessage());
         }
 
-        // Release funds for the milestone
-        $paymentService = app(\App\Services\PaymentService::class);
-        $paymentService->releaseMilestone($request->user(), $milestone->amount, $project);
+        // Release funds for the milestone — wrapped in try-catch to return clear error
+        try {
+            $paymentService = app(\App\Services\PaymentService::class);
+            $paymentService->releaseMilestone($request->user(), $milestone->amount, $project);
+        } catch (\Exception $e) {
+            \Log::error("Failed to release funds for milestone #{$milestone->id}: " . $e->getMessage());
+            // Milestone is already approved, but payment failed — log and inform
+            return response()->json([
+                'milestone' => $milestone,
+                'payment_warning' => 'El hito fue aprobado pero hubo un problema al liberar los fondos: ' . $e->getMessage()
+            ], 200);
+        }
 
         return response()->json($milestone);
     }
