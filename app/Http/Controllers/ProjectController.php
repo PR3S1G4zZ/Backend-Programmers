@@ -149,16 +149,43 @@ class ProjectController extends Controller
 
         try {
             DB::transaction(function () use ($request, $project) {
-                // Update project status to in_progress
+                $paymentService = app(\App\Services\PaymentService::class);
+                
+                // 1. Check if project is already funded. If not, fund it now (50% deposit + platform fee)
+                $existingCommission = \App\Models\PlatformCommission::where('project_id', $project->id)->first();
+                if (!$existingCommission) {
+                    $totalBudget = $project->budget_max ?? $project->budget_min ?? 0;
+                    if ($totalBudget <= 0) {
+                        throw new \Exception("El presupuesto del proyecto debe ser configurado y mayor a 0 antes de iniciar.");
+                    }
+
+                    $escrowAmount = $totalBudget * 0.5;
+                    $platformFeeRate = $paymentService->getCommissionRate($totalBudget);
+                    $platformFee = $totalBudget * $platformFeeRate;
+
+                    // Verify if company has balance for deposit + fee
+                    $paymentService->checkSufficientBalance($request->user(), $escrowAmount, $platformFee);
+
+                    // A. Charge platform fee
+                    $paymentService->chargePlatformFee($request->user(), $platformFee, $project);
+
+                    // B. Deposit 50% in escrow
+                    $paymentService->fundProject($request->user(), $escrowAmount, $project);
+
+                    // C. Create commission record
+                    $paymentService->createCommissionRecord($request->user(), $project, $totalBudget);
+                }
+
+                // 2. Update project status to in_progress
                 $project->update(['status' => 'in_progress']);
 
-                // Create developer progress records for all accepted developers
+                // 3. Create developer progress records for all accepted developers
                 $acceptedDevelopers = $project->applications()
                     ->where('status', 'accepted')
                     ->pluck('developer_id');
                 
                 foreach ($acceptedDevelopers as $developerId) {
-                    DeveloperProgress::firstOrCreate([
+                    \App\Models\DeveloperProgress::firstOrCreate([
                         'project_id' => $project->id,
                         'developer_id' => $developerId
                     ], [
@@ -168,29 +195,29 @@ class ProjectController extends Controller
                     ]);
                 }
 
-                // Create a group chat for the project
+                // 4. Create a group chat for the project
                 // PostgreSQL requires literal boolean — DB::raw('true') prevents PDO from sending integer 1
                 $conversation = Conversation::create([
                     'name' => $project->title,
                     'is_group' => DB::raw('true')
                 ]);
 
-                // Add company user to the conversation
+                // 5. Add company user to the conversation
                 $conversation->participants()->attach($request->user()->id);
 
-                // Add all accepted developers to the conversation
+                // 6. Add all accepted developers to the conversation
                 $conversation->participants()->attach($acceptedDevelopers);
             });
 
             return response()->json([
-                'message' => 'Proyecto iniciado con éxito',
+                'message' => 'Proyecto iniciado con éxito. Se ha depositado el 50% inicial en garantía.',
                 'project' => new \App\Http\Resources\ProjectResource($project->fresh())
             ]);
         } catch (\Exception $e) {
             \Log::error("Error starting project #{$project->id}: " . $e->getMessage());
             return response()->json([
-                'message' => 'Error al iniciar el proyecto: ' . $e->getMessage()
-            ], 500);
+                'message' => 'No se pudo iniciar el proyecto: ' . $e->getMessage()
+            ], 400);
         }
     }
 
@@ -438,32 +465,43 @@ class ProjectController extends Controller
             ], 400);
         }
 
-        $totalBudget = $project->budget_max ?? $project->budget_min ?? 0;
-        $remainingToFund = $totalBudget * 0.5; // Second 50% to add to escrow
-        $totalToRelease = $totalBudget; // Release 100% of budget (50% already held + 50% new)
+        $totalBudget = (float)($project->budget_max ?? $project->budget_min ?? 0);
+        
+        // Use PlatformCommission to compute exactly what was already funded
+        $commissionRecord = \App\Models\PlatformCommission::where('project_id', $project->id)->first();
+        $alreadyFunded = $commissionRecord ? (float)$commissionRecord->held_amount : 0;
+        
+        $remainingToFund = max(0, $totalBudget - $alreadyFunded);
+        $totalToRelease = $totalBudget;
+
+        \Log::info("Completing project #{$project->id}. Budget: \${$totalBudget}, Already funded: \${$alreadyFunded}, Remaining: \${$remainingToFund}, Total to release: \${$totalToRelease}");
 
         $wallet = $r->user()->wallet()->firstOrCreate(['user_id' => $r->user()->id], ['balance' => 0]);
-        $availableBalance = $wallet->balance;
-
-        if ($availableBalance < $remainingToFund) {
+        
+        if ($wallet->balance < $remainingToFund) {
             return response()->json([
-                'message' => 'Saldo insuficiente para completar el proyecto.',
+                'message' => 'Saldo insuficiente para completar el pago final del proyecto.',
                 'required' => $remainingToFund,
-                'available' => $availableBalance,
+                'available' => $wallet->balance,
             ], 400);
         }
 
         try {
             // Financial operations ONLY inside the transaction — NO notifications
-            DB::transaction(function () use ($r, $project, $totalBudget, $remainingToFund, $totalToRelease) {
+            DB::transaction(function () use ($r, $project, $totalBudget, $remainingToFund, $totalToRelease, $commissionRecord) {
                 $paymentService = app(\App\Services\PaymentService::class);
 
-                // 1. Fund the remaining 50% into escrow
+                // 1. Fund the remaining amount into escrow
                 if ($remainingToFund > 0) {
                     $paymentService->fundProject($r->user(), $remainingToFund, $project);
+                    
+                    // Update the commission record held_amount if it exists
+                    if ($commissionRecord) {
+                        $commissionRecord->increment('held_amount', $remainingToFund);
+                    }
                 }
 
-                // 2. Release the project-specific amount (totalBudget) — NOT the entire held_balance
+                // 2. Release 100% of project budget to developers
                 if ($totalToRelease > 0) {
                     $paymentService->releaseMilestone($r->user(), $totalToRelease, $project, true);
                 }
@@ -485,19 +523,22 @@ class ProjectController extends Controller
                 // 5. Create automatic portfolio entry for each developer
                 try {
                     if ($app->developer) {
-                        \App\Models\PortfolioProject::firstOrCreate(
+                        $skills = $project->skills->pluck('name')->toArray();
+                        
+                        \App\Models\PortfolioProject::updateOrCreate(
                             [
                                 'user_id' => $app->developer->id,
                                 'title' => $project->title,
                             ],
                             [
                                 'description' => $project->description,
-                                'technologies' => $project->skills->pluck('name')->toArray(),
+                                'technologies' => !empty($skills) ? $skills : ['Freelance Project'],
                                 'completion_date' => now()->toDateString(),
-                                'client' => $r->user()->name ?? 'Empresa',
+                                'client' => $r->user()->name ?? 'Empresa Verificada',
                                 'featured' => false,
                             ]
                         );
+                        \Log::info("Portfolio entry created/updated for dev #{$app->developer->id} for project #{$project->id}");
                     }
                 } catch (\Exception $e) {
                     \Log::warning("Failed to create portfolio entry for developer {$app->developer_id}: " . $e->getMessage());
@@ -505,15 +546,16 @@ class ProjectController extends Controller
             }
 
             return response()->json([
-                'message' => 'Proyecto completado exitosamente. El pago ha sido liberado al freelancer.',
-                'project' => new \App\Http\Resources\ProjectResource($project->fresh())
+                'message' => '¡Proyecto completado y pago liberado exitosamente!',
+                'project' => new \App\Http\Resources\ProjectResource($project->fresh()),
+                'payout_released' => $totalToRelease
             ]);
 
         } catch (\Exception $e) {
-            \Log::error("Error completing project #{$project->id}: " . $e->getMessage());
+            \Log::error("Critical error completing project #{$project->id}: " . $e->getMessage());
             return response()->json([
-                'message' => 'Error en el proceso de pago: ' . $e->getMessage()
-            ], 400);
+                'message' => 'Error al procesar el pago final: ' . $e->getMessage()
+            ], 500);
         }
     }
 }

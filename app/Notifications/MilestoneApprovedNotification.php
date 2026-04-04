@@ -33,10 +33,15 @@ class MilestoneApprovedNotification extends Notification implements ShouldQueue
 
     public function toArray($notifiable): array
     {
+        $message = "El hito \"{$this->milestone->title}\" del proyecto \"{$this->project->title}\" fue aprobado.";
+        if ($this->milestone->amount > 0) {
+            $message .= " \${$this->milestone->amount} liberados.";
+        }
+
         return [
             'type' => 'milestone_approved',
             'title' => 'Hito aprobado',
-            'message' => "El hito \"{$this->milestone->title}\" del proyecto \"{$this->project->title}\" fue aprobado. \${$this->milestone->amount} liberados.",
+            'message' => $message,
             'project_id' => $this->project->id,
             'project_title' => $this->project->title,
             'milestone_id' => $this->milestone->id,
