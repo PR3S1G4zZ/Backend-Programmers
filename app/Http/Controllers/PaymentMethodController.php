@@ -11,7 +11,7 @@ class PaymentMethodController extends Controller
     public function index(Request $r)
     {
         return PaymentMethod::where('user_id', $r->user()->id)
-            ->where('is_default', true)
+            ->where('is_default', 'true')
             ->get();
     }
 
