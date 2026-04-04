@@ -55,18 +55,17 @@ class DashboardController extends Controller
             : 0;
 
         // 2. Proyectos Activos (Active Projects)
-        // Based on applications accepted and project status
+        // Solo proyectos que la empresa ya inició oficialmente (status = in_progress)
         $activeProjectsCount = Application::where('developer_id', $uid)
             ->where('status', 'accepted')
             ->whereHas('project', function($q) {
-                // Return any project that is not completed or cancelled if application is accepted
-                $q->whereNotIn('status', ['completed', 'cancelled']); 
+                $q->where('status', 'in_progress'); 
             })->count();
             
         $activeProjectsList = Application::where('developer_id', $uid)
             ->where('status', 'accepted')
             ->whereHas('project', function($q) {
-                $q->whereNotIn('status', ['completed', 'cancelled']);
+                $q->where('status', 'in_progress');
             })
             ->with(['project', 'project.company'])
             ->take(3)

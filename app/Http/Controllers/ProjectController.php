@@ -120,7 +120,8 @@ class ProjectController extends Controller
             $q->where('remote', filter_var($r->remote, FILTER_VALIDATE_BOOLEAN));
         }
         if ($r->filled('my_projects')) {
-             $q->whereHas('applications', function ($query) use ($r) {
+             $q->where('status', 'in_progress')
+               ->whereHas('applications', function ($query) use ($r) {
                  $query->where('developer_id', $r->user()->id)->where('status', 'accepted');
              });
         }
