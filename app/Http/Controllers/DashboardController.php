@@ -88,7 +88,7 @@ class DashboardController extends Controller
 
         // 4. Mensajes sin leer — includes group chats via conversation_participants pivot
         $unreadMessages = Message::where('sender_id', '!=', $uid)
-            ->where('is_read', false)
+            ->whereRaw('"is_read" = false')
             ->whereHas('conversation', function($q) use ($uid) {
                 $q->where(function($sub) use ($uid) {
                     // Direct chats
