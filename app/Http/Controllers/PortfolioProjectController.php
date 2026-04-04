@@ -45,7 +45,11 @@ class PortfolioProjectController extends Controller
             'image' => 'nullable|image|max:2048',
         ]);
 
-        // El mutador del modelo se encarga de convertir 'featured' a booleano
+        // FORZAR conversión a booleano para evitar error en PostgreSQL
+        if (array_key_exists('featured', $data)) {
+            $data['featured'] = (bool) filter_var($data['featured'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        }
+
         $entry = new PortfolioProject($data);
         $entry->user_id = $request->user()->id;
 
@@ -79,7 +83,10 @@ class PortfolioProjectController extends Controller
             'image' => 'nullable|image|max:2048',
         ]);
 
-        // El mutador del modelo se encarga de convertir 'featured' a booleano
+        // FORZAR conversión a booleano para evitar error en PostgreSQL
+        if (array_key_exists('featured', $data)) {
+            $data['featured'] = (bool) filter_var($data['featured'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        }
 
         if ($request->hasFile('image')) {
             // Delete old image if exists
