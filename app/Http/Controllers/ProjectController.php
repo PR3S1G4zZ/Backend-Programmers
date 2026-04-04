@@ -147,38 +147,51 @@ class ProjectController extends Controller
             return response()->json(['message' => 'El proyecto debe tener al menos un desarrollador aceptado para iniciar'], 400);
         }
 
-        // Update project status to in_progress
-        $project->update(['status' => 'in_progress']);
+        try {
+            DB::transaction(function () use ($request, $project) {
+                // Update project status to in_progress
+                $project->update(['status' => 'in_progress']);
 
-        // Create developer progress records for all accepted developers
-        $acceptedDevelopers = $project->applications()
-            ->where('status', 'accepted')
-            ->pluck('developer_id');
-        
-        foreach ($acceptedDevelopers as $developerId) {
-            DeveloperProgress::firstOrCreate([
-                'project_id' => $project->id,
-                'developer_id' => $developerId
-            ], [
-                'progress' => 0,
-                'milestones_completed' => json_encode([]),
-                'tasks_completed' => json_encode([])
+                // Create developer progress records for all accepted developers
+                $acceptedDevelopers = $project->applications()
+                    ->where('status', 'accepted')
+                    ->pluck('developer_id');
+                
+                foreach ($acceptedDevelopers as $developerId) {
+                    DeveloperProgress::firstOrCreate([
+                        'project_id' => $project->id,
+                        'developer_id' => $developerId
+                    ], [
+                        'progress' => 0,
+                        'milestones_completed' => json_encode([]),
+                        'tasks_completed' => json_encode([])
+                    ]);
+                }
+
+                // Create a group chat for the project
+                // PostgreSQL requires literal boolean — DB::raw('true') prevents PDO from sending integer 1
+                $conversation = Conversation::create([
+                    'name' => $project->title,
+                    'is_group' => DB::raw('true')
+                ]);
+
+                // Add company user to the conversation
+                $conversation->participants()->attach($request->user()->id);
+
+                // Add all accepted developers to the conversation
+                $conversation->participants()->attach($acceptedDevelopers);
+            });
+
+            return response()->json([
+                'message' => 'Proyecto iniciado con éxito',
+                'project' => new \App\Http\Resources\ProjectResource($project->fresh())
             ]);
+        } catch (\Exception $e) {
+            \Log::error("Error starting project #{$project->id}: " . $e->getMessage());
+            return response()->json([
+                'message' => 'Error al iniciar el proyecto: ' . $e->getMessage()
+            ], 500);
         }
-
-        // Create a group chat for the project
-        $conversation = Conversation::create([
-            'name' => $project->title,
-            'is_group' => true
-        ]);
-
-        // Add company user to the conversation
-        $conversation->participants()->attach($request->user()->id);
-
-        // Add all accepted developers to the conversation
-        $conversation->participants()->attach($acceptedDevelopers);
-
-        return response()->json(['message' => 'Proyecto iniciado con éxito', 'project' => new \App\Http\Resources\ProjectResource($project)]);
     }
 
     /**
@@ -459,7 +472,7 @@ class ProjectController extends Controller
                 $project->update(['status' => 'completed']);
             });
 
-            // 4. Notifications OUTSIDE the transaction — prevents hanging if mail fails
+            // 4. Notifications + Portfolio OUTSIDE the transaction — prevents hanging if mail fails
             foreach ($acceptedApps as $app) {
                 try {
                     if ($app->developer) {
@@ -467,6 +480,27 @@ class ProjectController extends Controller
                     }
                 } catch (\Exception $e) {
                     \Log::warning("Failed to send project completion notification to developer {$app->developer_id}: " . $e->getMessage());
+                }
+
+                // 5. Create automatic portfolio entry for each developer
+                try {
+                    if ($app->developer) {
+                        \App\Models\PortfolioProject::firstOrCreate(
+                            [
+                                'user_id' => $app->developer->id,
+                                'title' => $project->title,
+                            ],
+                            [
+                                'description' => $project->description,
+                                'technologies' => $project->skills->pluck('name')->toArray(),
+                                'completion_date' => now()->toDateString(),
+                                'client' => $r->user()->name ?? 'Empresa',
+                                'featured' => false,
+                            ]
+                        );
+                    }
+                } catch (\Exception $e) {
+                    \Log::warning("Failed to create portfolio entry for developer {$app->developer_id}: " . $e->getMessage());
                 }
             }
 

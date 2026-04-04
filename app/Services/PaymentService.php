@@ -32,6 +32,8 @@ class PaymentService
              throw new Exception("Saldo insuficiente. Requerido: \${$amount}, Disponible: \${$wallet->balance}");
          }
 
+         \Log::info("[PaymentService] fundProject: Company #{$company->id} depositing \${$amount} to escrow for Project #{$project->id}. Wallet balance: \${$wallet->balance}");
+
          DB::transaction(function () use ($wallet, $amount, $project) {
              $wallet->decrement('balance', $amount);
              $wallet->increment('held_balance', $amount);
@@ -43,6 +45,8 @@ class PaymentService
                  $project->update(['status' => 'open']);
              }
          });
+
+         \Log::info("[PaymentService] fundProject: SUCCESS. Company #{$company->id} new balance: \${$wallet->fresh()->balance}, held: \${$wallet->fresh()->held_balance}");
     }
 
     /**
@@ -69,6 +73,8 @@ class PaymentService
 
         // 2. Calculate split amount
         $splitAmount = $amount / $developerCount;
+
+        \Log::info("[PaymentService] releaseMilestone: Releasing \${$amount} for Project #{$project->id}. Split: \${$splitAmount} x {$developerCount} devs");
 
         $totalCommissionReleased = 0;
 
@@ -103,8 +109,12 @@ class PaymentService
 
                 // Log deposit to Developer
                 $this->createTransaction($devWallet, $netAmount, 'payment_received', "Pago recibido Proyecto #{$project->id}", $project);
+
+                \Log::info("[PaymentService] releaseMilestone: Dev #{$developer->id} ({$developer->name}) received \${$netAmount} (commission: \${$commission} at {$rate}%)");
             }
         });
+
+        \Log::info("[PaymentService] releaseMilestone: COMPLETE. Total commission: \${$totalCommissionReleased}");
 
         // Update commission record if this is a project completion
         if ($updateCommissionRecord && $totalCommissionReleased > 0) {
