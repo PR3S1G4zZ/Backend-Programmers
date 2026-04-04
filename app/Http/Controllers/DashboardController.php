@@ -59,13 +59,14 @@ class DashboardController extends Controller
         $activeProjectsCount = Application::where('developer_id', $uid)
             ->where('status', 'accepted')
             ->whereHas('project', function($q) {
-                $q->whereIn('status', ['in_progress', 'open']); 
+                // Return any project that is not completed or cancelled if application is accepted
+                $q->whereNotIn('status', ['completed', 'cancelled']); 
             })->count();
             
         $activeProjectsList = Application::where('developer_id', $uid)
             ->where('status', 'accepted')
             ->whereHas('project', function($q) {
-                $q->whereIn('status', ['in_progress', 'open']);
+                $q->whereNotIn('status', ['completed', 'cancelled']);
             })
             ->with(['project', 'project.company'])
             ->take(3)
