@@ -54,9 +54,7 @@ class PortfolioProjectController extends Controller
             $data['github_url'] = 'https://' . $data['github_url'];
         }
 
-        if (array_key_exists('featured', $data)) {
-            $data['featured'] = (bool) $data['featured'];
-        }
+
 
         $entry = new PortfolioProject($data);
         $entry->user_id = $request->user()->id;
@@ -99,9 +97,7 @@ class PortfolioProjectController extends Controller
             $data['github_url'] = 'https://' . $data['github_url'];
         }
 
-        if (array_key_exists('featured', $data)) {
-            $data['featured'] = (bool) $data['featured'];
-        }
+
 
         if ($request->hasFile('image')) {
             // Delete old image if exists

@@ -26,7 +26,6 @@ class PortfolioProject extends Model
 
     protected $casts = [
         'technologies' => 'array',
-        'featured' => 'boolean',
         'views' => 'integer',
         'likes' => 'integer',
     ];
@@ -36,5 +35,13 @@ class PortfolioProject extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function setFeaturedAttribute($value)
+    {
+        $this->attributes['featured'] = filter_var($value, FILTER_VALIDATE_BOOLEAN) ? 'true' : 'false';
+    }
 
+    public function getFeaturedAttribute($value)
+    {
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+    }
 }
