@@ -433,7 +433,7 @@ class ProjectController extends Controller
 
         $totalMilestones = $project->milestones()->count();
         $acceptedDevsCount = $acceptedApps->count();
-        $totalExpectedCompletions = $totalMilestones * $acceptedDevsCount;
+        $totalExpectedCompletions = $totalMilestones; // Cada milestone es individual, no se multiplica
 
         if ($totalMilestones === 0) {
             return response()->json([
@@ -441,7 +441,7 @@ class ProjectController extends Controller
             ], 400);
         }
 
-        $completedMilestones = \App\Models\DeveloperMilestone::whereIn('milestone_id', $project->milestones->pluck('id'))
+        $completedMilestones = $project->milestones()
             ->where('progress_status', 'completed')
             ->count();
 
